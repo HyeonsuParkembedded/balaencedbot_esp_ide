@@ -39,11 +39,13 @@
 #include "logic/kalman_filter.h"
 #include "input/gps_sensor.h"
 #include "input/encoder_sensor.h"
+#include "input/battery_sensor.h"
 #include "output/motor_control.h"
 #include "output/ble_controller.h"
 #include "logic/pid_controller.h"
 #include "output/servo_standup.h"
 #include "system/error_recovery.h"
+#include "system/config_manager.h"
 
 // Pin definitions are now in config.h
 
@@ -81,8 +83,9 @@ static motor_control_t left_motor;      ///< 좌측 모터 제어
 static encoder_sensor_t right_encoder;  ///< 우측 바퀴 엔코더
 static motor_control_t right_motor;     ///< 우측 모터 제어
 static ble_controller_t ble_controller; ///< BLE 무선 통신 컨트롤러
-static pid_controller_t balance_pid;    ///< 밸런싱용 PID 제어기
+static balance_pid_t balance_pid;       ///< 밸런싱용 이중 루프 PID 제어기
 static servo_standup_t servo_standup;   ///< 기립 보조용 서보 모터
+static battery_sensor_t battery_sensor; ///< 배터리 전압 센서
 /** @} */
 
 /**
@@ -370,6 +373,17 @@ static esp_err_t init_gps_wrapper(void) {
 }
 
 /**
+ * @brief 배터리 센서 초기화 래퍼 함수
+ * 
+ * config.h에 정의된 설정값을 사용하여 배터리 센서를 초기화하는 래퍼 함수입니다.
+ * 
+ * @return ESP_OK 성공, ESP_FAIL 실패
+ */
+static esp_err_t init_battery_wrapper(void) {
+    return battery_sensor_init(&battery_sensor, CONFIG_BATTERY_ADC_CHANNEL, CONFIG_BATTERY_R1_KOHM, CONFIG_BATTERY_R2_KOHM);
+}
+
+/**
  * @brief BLE 컨트롤러 초기화 래퍼 함수
  * 
  * config.h에 정의된 설정값을 사용하여 BLE 컨트롤러를 초기화하는 래퍼 함수입니다.
@@ -389,6 +403,17 @@ static esp_err_t init_ble_wrapper(void) {
  */
 static esp_err_t init_servo_wrapper(void) {
     return servo_standup_init(&servo_standup, CONFIG_SERVO_PIN, CONFIG_SERVO_CHANNEL, CONFIG_SERVO_EXTENDED_ANGLE, CONFIG_SERVO_RETRACTED_ANGLE);
+}
+
+/**
+ * @brief 설정 관리자 초기화 래퍼 함수
+ * 
+ * NVS 기반 설정 관리자를 초기화하는 래퍼 함수입니다.
+ * 
+ * @return ESP_OK 성공, ESP_FAIL 실패
+ */
+static esp_err_t init_config_manager_wrapper(void) {
+    return config_manager_init();
 }
 
 /**
@@ -414,10 +439,12 @@ static void initialize_robot(void) {
     
     // Define component configurations
     component_info_t components[] = {
+        {"Config_Manager", init_config_manager_wrapper, COMPONENT_CRITICAL, false, 0},
         {"IMU_Sensor", init_imu_wrapper, COMPONENT_CRITICAL, false, 0},
         {"Left_Encoder", init_left_encoder_wrapper, COMPONENT_CRITICAL, false, 0},
         {"Right_Encoder", init_right_encoder_wrapper, COMPONENT_CRITICAL, false, 0},
         {"GPS_Sensor", init_gps_wrapper, COMPONENT_OPTIONAL, false, 0},
+        {"Battery_Sensor", init_battery_wrapper, COMPONENT_IMPORTANT, false, 0},
         {"BLE_Controller", init_ble_wrapper, COMPONENT_IMPORTANT, false, 0},
         {"Servo_Standup", init_servo_wrapper, COMPONENT_IMPORTANT, false, 0}
     };
@@ -429,10 +456,15 @@ static void initialize_robot(void) {
         initialize_component_with_retry(&components[i]);
     }
     
-    // Initialize Kalman filter
+    // Initialize Kalman filter with tuned parameters
+    const tuning_params_t* params = config_manager_get_params();
     kalman_filter_init(&kalman_pitch);
     kalman_filter_set_angle(&kalman_pitch, 0.0f);
-    BSW_LOGI(TAG, "Kalman filter initialized");
+    // Apply tuned noise parameters
+    kalman_pitch.Q_angle = params ? params->kalman_q_angle : CONFIG_KALMAN_Q_ANGLE;
+    kalman_pitch.Q_bias = params ? params->kalman_q_bias : CONFIG_KALMAN_Q_BIAS;
+    kalman_pitch.R_measure = params ? params->kalman_r_measure : CONFIG_KALMAN_R_MEASURE;
+    BSW_LOGI(TAG, "Kalman filter initialized with tuned parameters");
     
     // Initialize motors (these are always critical)
     esp_err_t ret = motor_control_init(&left_motor, CONFIG_LEFT_MOTOR_A_PIN, CONFIG_LEFT_MOTOR_B_PIN, CONFIG_LEFT_MOTOR_EN_PIN, CONFIG_LEFT_MOTOR_CHANNEL);
@@ -451,10 +483,20 @@ static void initialize_robot(void) {
     }
     BSW_LOGI(TAG, "Right motor initialized");
     
-    // Initialize PID controllers
-    pid_controller_init(&balance_pid, CONFIG_BALANCE_PID_KP, CONFIG_BALANCE_PID_KI, CONFIG_BALANCE_PID_KD);
-    pid_controller_set_output_limits(&balance_pid, CONFIG_PID_OUTPUT_MIN, CONFIG_PID_OUTPUT_MAX);
-    BSW_LOGI(TAG, "PID controllers initialized");
+    // Initialize PID controllers with tuned parameters
+    balance_pid_init(&balance_pid);
+    if (params) {
+        balance_pid_set_balance_tunings(&balance_pid, params->balance_kp, params->balance_ki, params->balance_kd);
+        balance_pid_set_velocity_tunings(&balance_pid, params->velocity_kp, params->velocity_ki, params->velocity_kd);
+        balance_pid_set_max_tilt_angle(&balance_pid, params->max_tilt_angle);
+    } else {
+        // Fallback to config.h defaults
+        balance_pid_set_balance_tunings(&balance_pid, CONFIG_BALANCE_PID_KP, CONFIG_BALANCE_PID_KI, CONFIG_BALANCE_PID_KD);
+        balance_pid_set_velocity_tunings(&balance_pid, 1.0f, 0.1f, 0.0f);
+        balance_pid_set_max_tilt_angle(&balance_pid, CONFIG_FALLEN_ANGLE_THRESHOLD);
+    }
+    balance_pid_set_target_velocity(&balance_pid, 0.0f);  // 정지 상태로 시작
+    BSW_LOGI(TAG, "Balance PID controllers initialized with tuned parameters");
     
     // Log system health after initialization
     log_system_health();
@@ -533,26 +575,43 @@ static void balance_task(void *pvParameters) {
             // Stop motors and reset PID
             motor_control_stop(&left_motor);
             motor_control_stop(&right_motor);
-            pid_controller_reset(&balance_pid);
+            balance_pid_reset(&balance_pid);
             break;
 
         case ROBOT_STATE_BALANCING:
-            // Set PID setpoint to maintain balance (0 degrees)
-            pid_controller_set_setpoint(&balance_pid, CONFIG_BALANCE_ANGLE_TARGET);
-
+            // Balance using dual-loop PID (angle + velocity control)
             // Compute balance control (dt = 20ms = 0.02s for 50Hz update rate)
             float dt = CONFIG_BALANCE_UPDATE_RATE / 1000.0f;
-            float motor_output = pid_controller_compute(&balance_pid, get_filtered_angle(), dt);
-
-            // Apply motor commands
-            update_motors(motor_output, cmd);
+            
+            // Get current sensor values
+            float current_angle = get_filtered_angle();
+            float current_velocity = get_robot_velocity();
+            
+            // Get angular velocity from IMU
+            imu_data_t imu_data;
+            if (imu_sensor_update(&imu) == ESP_OK) {
+                float gyro_rate = imu_sensor_get_gyro_y(&imu);  // Pitch angular velocity
+                
+                // Set target velocity based on remote command
+                balance_pid_set_target_velocity(&balance_pid, cmd.direction * 10.0f);  // Scale command
+                
+                // Compute dual-loop balance control output
+                float motor_output = balance_pid_compute_balance(&balance_pid, current_angle, gyro_rate, current_velocity, dt);
+                
+                // Apply motor commands
+                update_motors(motor_output, cmd);
+            } else {
+                // Fallback: stop motors if sensor fails
+                motor_control_stop(&left_motor);
+                motor_control_stop(&right_motor);
+            }
             break;
 
         case ROBOT_STATE_STANDING_UP:
             // Motors stopped during standup
             motor_control_stop(&left_motor);
             motor_control_stop(&right_motor);
-            pid_controller_reset(&balance_pid);
+            balance_pid_reset(&balance_pid);
             break;
 
         case ROBOT_STATE_FALLEN:
@@ -561,7 +620,7 @@ static void balance_task(void *pvParameters) {
             // Emergency stop
             motor_control_stop(&left_motor);
             motor_control_stop(&right_motor);
-            pid_controller_reset(&balance_pid);
+            balance_pid_reset(&balance_pid);
             break;
         }
         
@@ -605,13 +664,16 @@ static void status_task(void *pvParameters) {
             // Send structured status data instead of string
             float angle = get_filtered_angle();
             float velocity = get_robot_velocity();
-            float battery_voltage = 3.7f; // TODO: Read actual battery voltage
+            float battery_voltage = battery_sensor_read_voltage(&battery_sensor);
             ble_controller_send_status(&ble_controller, angle, velocity, battery_voltage);
         }
         
         // Print debug info to serial
-        BSW_LOGI(TAG, "Angle: %.2f | Velocity: %.2f | GPS: %s", 
-                get_filtered_angle(), get_robot_velocity(), 
+        float battery_voltage = battery_sensor_read_voltage(&battery_sensor);
+        int battery_percent = battery_sensor_get_percentage(&battery_sensor);
+        
+        BSW_LOGI(TAG, "Angle: %.2f | Velocity: %.2f | Battery: %.1fV(%d%%) | GPS: %s", 
+                get_filtered_angle(), get_robot_velocity(), battery_voltage, battery_percent,
                 gps_sensor_has_fix(&gps) ? "Valid" : "Invalid");
         
         if (gps_sensor_has_fix(&gps)) {
@@ -622,6 +684,16 @@ static void status_task(void *pvParameters) {
         }
         
         BSW_LOGI(TAG, "Standup: %s", servo_standup_is_standing_up(&servo_standup) ? "Active" : "Idle");
+        
+        // Print tuning parameters occasionally (every 10 seconds)
+        static int param_log_counter = 0;
+        if (++param_log_counter >= 10) {
+            param_log_counter = 0;
+            char param_status[256];
+            if (config_manager_get_status_string(param_status, sizeof(param_status)) == ESP_OK) {
+                BSW_LOGI(TAG, "Tuning: %s", param_status);
+            }
+        }
         
         vTaskDelay(pdMS_TO_TICKS(1000)); // 1Hz status updates
     }
@@ -665,15 +737,20 @@ static void update_motors(float motor_output, remote_command_t cmd) {
  * BLE로 수신된 원격 제어 명령을 분석하고 해당 동작을 실행합니다.
  * - 기립 명령 처리: 서보 기립 시스템 활성화 및 상태 전송
  * - 밸런싱 활성화/비활성화: 밸런싱 제어 플래그 업데이트
+ * - 설정 명령 처리: config_manager를 통한 파라미터 튜닝
  * 
  * 명령 처리 로직:
  * 1. BLE 컨트롤러에서 최신 명령 수신
- * 2. 기립 명령 확인 및 서보 동작 요청
- * 3. 밸런싱 상태 업데이트
- * 4. 필요시 상태 정보 BLE 전송
+ * 2. 텍스트 명령이 있으면 config_manager로 전달
+ * 3. 기립 명령 확인 및 서보 동작 요청
+ * 4. 밸런싱 상태 업데이트
+ * 5. 필요시 상태 정보 BLE 전송
  */
 static void handle_remote_commands(void) {
     remote_command_t cmd = ble_controller_get_command(&ble_controller);
+    
+    // TODO: Handle text commands for parameter tuning
+    // Example: Check if BLE received text command and pass to config_manager_handle_ble_command()
     
     // Handle standup command
     if (cmd.standup && !servo_standup_is_standing_up(&servo_standup)) {
@@ -681,7 +758,7 @@ static void handle_remote_commands(void) {
         // Send status with standup indication via system_status field
         float angle = get_filtered_angle();
         float velocity = get_robot_velocity(); 
-        float battery_voltage = 3.7f; // TODO: Read actual battery voltage
+        float battery_voltage = battery_sensor_read_voltage(&battery_sensor);
         ble_controller_send_status(&ble_controller, angle, velocity, battery_voltage);
     }
 

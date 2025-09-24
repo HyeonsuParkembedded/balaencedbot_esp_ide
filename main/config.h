@@ -26,6 +26,7 @@
 #include "driver/uart.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
+#include "soc/adc_channel.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -117,7 +118,7 @@ extern "C" {
  * @{
  */
 #define CONFIG_BATTERY_ADC_PIN          GPIO_NUM_3   ///< 배터리 전압 측정 ADC 핀 (ADC1_CH3 핀)
-#define CONFIG_BATTERY_ADC_CHANNEL      ADC1_CHANNEL_3 ///< ADC 채널 번호
+#define CONFIG_BATTERY_ADC_CHANNEL      ADC_CHANNEL_3 ///< ADC 채널 번호
 #define CONFIG_BATTERY_R1_KOHM          10.0f        ///< 전압분배 상단 저항 (kΩ)
 #define CONFIG_BATTERY_R2_KOHM          3.3f         ///< 전압분배 하단 저항 (kΩ)
 #define CONFIG_BATTERY_MAX_VOLTAGE      8.4f         ///< 배터리 최대 전압 (V) - 2S 리튬 완충
