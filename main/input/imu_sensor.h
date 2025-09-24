@@ -12,7 +12,7 @@
  * - 피치/롤 각도 계산
  * - 데이터 유효성 검증
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

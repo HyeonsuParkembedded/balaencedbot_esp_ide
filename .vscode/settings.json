@@ -3,18 +3,18 @@
   "idf.espIdfPathWin": "C:\\Users\\hyuns\\esp\\v5.5\\esp-idf",
   "idf.pythonInstallPath": "C:\\Users\\hyuns\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
   "idf.openOcdConfigs": [
-    "board/esp32s3-builtin.cfg"
+    "board/esp32c6-builtin.cfg"
   ],
   "idf.portWin": "COM1",
   "idf.toolsPathWin": "C:\\Users\\hyuns\\.espressif",
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32s3"
+    "IDF_TARGET": "esp32c6"
   },
   "clangd.path": "C:\\Users\\hyuns\\.espressif\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
   "clangd.arguments": [
     "--background-index",
-    "--query-driver=C:\\Users\\hyuns\\.espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20241119\\xtensa-esp-elf\\bin\\xtensa-esp32-elf-gcc.exe",
-    "--compile-commands-dir=${workspaceFolder}\\build"
+    "--query-driver=C:\\Users\\hyuns\\.espressif\\tools\\riscv32-esp-elf\\esp-14.2.0_20241119\\riscv32-esp-elf\\bin\\riscv32-esp-elf-gcc.exe",
+    "--compile-commands-dir=c:\\Users\\hyuns\\Desktop\\balaencedbot_esp_ide\\build"
   ],
   "idf.buildPath": "${workspaceFolder}\\build",
   "C_Cpp.default.compileCommands": "${workspaceFolder}\\build\\compile_commands.json",

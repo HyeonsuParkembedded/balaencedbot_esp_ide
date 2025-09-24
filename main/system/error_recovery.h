@@ -5,8 +5,8 @@
  * 시스템 컴포넌트의 초기화 실패나 런타임 오류를 처리하고,
  * 안전한 운영을 위한 복구 메커니즘을 제공합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 

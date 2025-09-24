@@ -5,7 +5,7 @@
  * MPU6050 6축 관성 측정 장치의 저수준 제어 및 데이터 처리를 구현합니다.
  * I2C 통신을 통해 가속도계/자이로스코프 데이터를 읽어와 피치/롤 각도를 계산합니다.
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

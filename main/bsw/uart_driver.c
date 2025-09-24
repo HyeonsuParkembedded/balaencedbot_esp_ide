@@ -2,10 +2,10 @@
  * @file uart_driver.c
  * @brief UART 통신 드라이버 구현 파일
  * 
- * ESP32-S3의 UART 인터페이스를 사용하여 GPS 모듈과 시리얼 통신을 수행합니다.
+ * ESP32-C6의 UART 인터페이스를 사용하여 GPS 모듈과 시리얼 통신을 수행합니다.
  * 표준 8N1 설정과 효율적인 버퍼 관리를 제공합니다.
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */
@@ -31,7 +31,7 @@ static const char* UART_TAG = "UART_DRIVER"; ///< ESP-IDF 로깅 태그
  * - 패리티: 없음
  * - 스톱 비트: 1비트
  * - 하드웨어 플로우 제어: 비활성화
- * - 클록 소스: APB 클록
+ * - 클록 소스: 기본 클록
  * - RX 버퍼: 1024바이트
  * 
  * @param port UART 포트 번호
@@ -48,10 +48,11 @@ esp_err_t uart_driver_init(uart_port_t port, gpio_num_t tx_pin, gpio_num_t rx_pi
         .parity = UART_PARITY_DISABLE,           // 패리티 없음
         .stop_bits = UART_STOP_BITS_1,           // 1 스톱 비트
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,   // 하드웨어 플로우 제어 없음
-        .source_clk = UART_SCLK_APB,             // APB 클록 사용
+        .rx_flow_ctrl_thresh = 122,              // RX 플로우 제어 임계값 (기본값)
+        .source_clk = UART_SCLK_DEFAULT,         // 기본 클록 사용 (ESP32-C6 호환)
     };
 
-    // UART 드라이버 설치 (RX 버퍼 1024바이트, TX 버퍼 없음)
+    // UART 드라이버 설치 (RX 버퍼 1024바이트, TX 버퍼 없음, 이벤트 큐 없음)
     esp_err_t ret = uart_driver_install(port, 1024, 0, 0, NULL, 0);
     if (ret != ESP_OK) {
         ESP_LOGE(UART_TAG, "UART driver install failed");

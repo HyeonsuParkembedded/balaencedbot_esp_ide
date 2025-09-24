@@ -5,8 +5,8 @@
  * DC 모터의 방향과 속도를 제어하는 기능을 제공합니다.
  * H-브리지 회로와 PWM을 사용하여 양방향 모터 제어를 구현합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 

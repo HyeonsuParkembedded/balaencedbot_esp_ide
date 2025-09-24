@@ -19,7 +19,7 @@
  * 
  * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
- * @version 1.0
+ * @version 2.0
  */
 
 #include <stdio.h>

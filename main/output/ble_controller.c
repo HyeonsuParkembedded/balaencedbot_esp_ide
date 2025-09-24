@@ -5,8 +5,8 @@
  * ESP32 BLE 스택을 사용하여 모바일 앱과의 무선 통신을 구현합니다.
  * GATT 서버로 동작하며, 명령 수신 및 상태 전송 기능을 제공합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 

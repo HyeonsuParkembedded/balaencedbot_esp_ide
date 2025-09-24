@@ -12,7 +12,7 @@
  * - 회전 속도 측정
  * - 인터럽트 기반 실시간 처리
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

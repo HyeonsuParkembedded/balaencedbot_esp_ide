@@ -5,7 +5,7 @@
  * UART를 통해 GPS 모듈로부터 NMEA 0183 형식의 데이터를 수신하고
  * 파싱하여 위도, 경도, 고도 등의 위치 정보를 추출합니다.
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

@@ -5,8 +5,8 @@
  * PWM을 사용하여 서보 모터를 제어하고, 상태 머신을 통해
  * 체계적인 기립 시퀀스를 실행합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 

@@ -5,8 +5,8 @@
  * 컴포넌트 초기화 재시도, 실패 처리, 안전 모드 전환 등의
  * 시스템 안정성 관련 기능을 구현합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-24
  * @version 1.0
  */
 

@@ -5,14 +5,14 @@
  * 이 파일은 BalanceBot 프로젝트의 모든 하드웨어 핀 할당, 제어 시스템 파라미터,
  * 태스크 설정, 통신 설정 등을 정의합니다.
  * 
- * ESP32-S3-DevKitC-1 보드에 최적화되어 있으며, 다음과 같은 구성요소를 지원합니다:
+ * WeAct ESP32-C6 보드에 최적화되어 있으며, 다음과 같은 구성요소를 지원합니다:
  * - MPU6050 IMU 센서 (I2C)
  * - GPS 모듈 (UART)
  * - 좌우 모터와 엔코더
  * - 서보 모터 (기립 보조)
  * - BLE 통신
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */
@@ -36,7 +36,8 @@ typedef enum {
     GPIO_NUM_1, GPIO_NUM_2, GPIO_NUM_3, GPIO_NUM_4, GPIO_NUM_5,
     GPIO_NUM_6, GPIO_NUM_7, GPIO_NUM_8, GPIO_NUM_9, GPIO_NUM_10,
     GPIO_NUM_11, GPIO_NUM_12, GPIO_NUM_15, GPIO_NUM_16, GPIO_NUM_17,
-    GPIO_NUM_18, GPIO_NUM_20, GPIO_NUM_21
+    GPIO_NUM_18, GPIO_NUM_19, GPIO_NUM_20, GPIO_NUM_21, GPIO_NUM_22,
+    GPIO_NUM_23
 } gpio_num_t;
 #endif
 
@@ -44,11 +45,13 @@ typedef enum {
 #define LEDC_CHANNEL_T_DEFINED
 typedef enum {
     I2C_NUM_0 = 0,
+    UART_NUM_1 = 1,
     UART_NUM_2 = 2,
     LEDC_CHANNEL_0 = 0,
     LEDC_CHANNEL_1 = 1,
     LEDC_CHANNEL_2 = 2,
-    ADC1_CHANNEL_0 = 0
+    ADC1_CHANNEL_0 = 0,
+    ADC1_CHANNEL_3 = 3
 } ledc_channel_t;
 #endif
 #endif
@@ -58,8 +61,8 @@ extern "C" {
 #endif
 
 /**
- * @defgroup HARDWARE_CONFIG 하드웨어 핀 설정
- * @brief ESP32-S3-DevKitC-1 보드의 하드웨어 핀 할당 정의
+ * @defgroup HARDWARE_CONFIG 하드웨어 핀 설정 (WeAct ESP32-C6 최종)
+ * @brief WeAct Studio ESP32-C6 보드에 최적화된 최종 핀 할당입니다.
  * @{
  */
 
@@ -72,19 +75,19 @@ extern "C" {
  * @brief 6축 관성 센서 I2C 인터페이스 설정
  * @{
  */
-#define CONFIG_MPU6050_SDA_PIN          GPIO_NUM_8   ///< I2C SDA 핀 (ESP32-S3 표준)
-#define CONFIG_MPU6050_SCL_PIN          GPIO_NUM_9   ///< I2C SCL 핀 (ESP32-S3 표준)
+#define CONFIG_MPU6050_SDA_PIN          GPIO_NUM_6   ///< LP_I2C_SDA
+#define CONFIG_MPU6050_SCL_PIN          GPIO_NUM_7   ///< LP_I2C_SCL
 #define CONFIG_MPU6050_I2C_PORT         I2C_NUM_0    ///< I2C 포트 번호
 /** @} */
 
 /**
- * @defgroup GPS_CONFIG GPS 모듈 설정
+ * @defgroup GPS_CONFIG GPS 모듈 설정 (UART1 사용)
  * @brief UART 기반 GPS 모듈 인터페이스 설정
  * @{
  */
-#define CONFIG_GPS_RX_PIN               GPIO_NUM_18  ///< GPS UART RX 핀
-#define CONFIG_GPS_TX_PIN               GPIO_NUM_17  ///< GPS UART TX 핀
-#define CONFIG_GPS_UART_PORT            UART_NUM_2   ///< UART 포트 번호
+#define CONFIG_GPS_RX_PIN               GPIO_NUM_4   ///< LP_UART_RXD
+#define CONFIG_GPS_TX_PIN               GPIO_NUM_5   ///< LP_UART_TXD
+#define CONFIG_GPS_UART_PORT            UART_NUM_1   ///< 디버깅과 분리를 위해 UART1 사용
 #define CONFIG_GPS_BAUDRATE             9600         ///< GPS 통신 속도 (bps)
 /** @} */
 
@@ -93,9 +96,9 @@ extern "C" {
  * @brief 좌측 모터 제어 핀 및 PWM 채널 설정
  * @{
  */
-#define CONFIG_LEFT_MOTOR_A_PIN         GPIO_NUM_1   ///< 좌측 모터 A 방향 핀
-#define CONFIG_LEFT_MOTOR_B_PIN         GPIO_NUM_2   ///< 좌측 모터 B 방향 핀
-#define CONFIG_LEFT_MOTOR_EN_PIN        GPIO_NUM_3   ///< 좌측 모터 PWM 활성화 핀
+#define CONFIG_LEFT_MOTOR_A_PIN         GPIO_NUM_10  ///< 좌측 모터 A 방향 핀
+#define CONFIG_LEFT_MOTOR_B_PIN         GPIO_NUM_11  ///< 좌측 모터 B 방향 핀
+#define CONFIG_LEFT_MOTOR_EN_PIN        GPIO_NUM_8   ///< 좌측 모터 PWM 활성화 핀 (PWM 가능 핀)
 #define CONFIG_LEFT_MOTOR_CHANNEL       LEDC_CHANNEL_0 ///< 좌측 모터 PWM 채널
 /** @} */
 
@@ -104,8 +107,8 @@ extern "C" {
  * @brief 좌측 모터 회전 인코더 핀 설정
  * @{
  */
-#define CONFIG_LEFT_ENC_A_PIN           GPIO_NUM_4   ///< 좌측 엔코더 A상 핀
-#define CONFIG_LEFT_ENC_B_PIN           GPIO_NUM_5   ///< 좌측 엔코더 B상 핀
+#define CONFIG_LEFT_ENC_A_PIN           GPIO_NUM_1   ///< 좌측 엔코더 A상 핀
+#define CONFIG_LEFT_ENC_B_PIN           GPIO_NUM_2   ///< 좌측 엔코더 B상 핀
 /** @} */
 
 /**
@@ -113,9 +116,9 @@ extern "C" {
  * @brief 우측 모터 제어 핀 및 PWM 채널 설정
  * @{
  */
-#define CONFIG_RIGHT_MOTOR_A_PIN        GPIO_NUM_6   ///< 우측 모터 A 방향 핀
-#define CONFIG_RIGHT_MOTOR_B_PIN        GPIO_NUM_7   ///< 우측 모터 B 방향 핀
-#define CONFIG_RIGHT_MOTOR_EN_PIN       GPIO_NUM_15  ///< 우측 모터 PWM 활성화 핀
+#define CONFIG_RIGHT_MOTOR_A_PIN        GPIO_NUM_20  ///< 우측 모터 A 방향 핀
+#define CONFIG_RIGHT_MOTOR_B_PIN        GPIO_NUM_21  ///< 우측 모터 B 방향 핀
+#define CONFIG_RIGHT_MOTOR_EN_PIN       GPIO_NUM_18  ///< 우측 모터 PWM 활성화 핀 (PWM 가능 핀)
 #define CONFIG_RIGHT_MOTOR_CHANNEL      LEDC_CHANNEL_1 ///< 우측 모터 PWM 채널
 /** @} */
 
@@ -124,8 +127,8 @@ extern "C" {
  * @brief 우측 모터 회전 인코더 핀 설정
  * @{
  */
-#define CONFIG_RIGHT_ENC_A_PIN          GPIO_NUM_16  ///< 우측 엔코더 A상 핀
-#define CONFIG_RIGHT_ENC_B_PIN          GPIO_NUM_21  ///< 우측 엔코더 B상 핀
+#define CONFIG_RIGHT_ENC_A_PIN          GPIO_NUM_22  ///< 우측 엔코더 A상 핀
+#define CONFIG_RIGHT_ENC_B_PIN          GPIO_NUM_23  ///< 우측 엔코더 B상 핀
 /** @} */
 
 /**
@@ -133,7 +136,7 @@ extern "C" {
  * @brief 기립 보조용 서보 모터 제어 설정
  * @{
  */
-#define CONFIG_SERVO_PIN                GPIO_NUM_10  ///< 서보 모터 PWM 신호 핀
+#define CONFIG_SERVO_PIN                GPIO_NUM_19  ///< 서보 모터 PWM 신호 핀 (PWM 가능 핀)
 #define CONFIG_SERVO_CHANNEL            LEDC_CHANNEL_2 ///< 서보 모터 PWM 채널
 /** @} */
 
@@ -142,8 +145,8 @@ extern "C" {
  * @brief 배터리 전압 모니터링용 ADC 핀 설정
  * @{
  */
-#define CONFIG_BATTERY_ADC_PIN          GPIO_NUM_1   ///< 배터리 전압 측정 ADC 핀 (ADC1_CH0)
-#define CONFIG_BATTERY_ADC_CHANNEL      ADC1_CHANNEL_0 ///< ADC 채널 번호
+#define CONFIG_BATTERY_ADC_PIN          GPIO_NUM_3   ///< 배터리 전압 측정 ADC 핀 (ADC1_CH3 핀)
+#define CONFIG_BATTERY_ADC_CHANNEL      ADC1_CHANNEL_3 ///< ADC 채널 번호
 #define CONFIG_BATTERY_R1_KOHM          10.0f        ///< 전압분배 상단 저항 (kΩ)
 #define CONFIG_BATTERY_R2_KOHM          3.3f         ///< 전압분배 하단 저항 (kΩ)
 #define CONFIG_BATTERY_MAX_VOLTAGE      8.4f         ///< 배터리 최대 전압 (V) - 2S 리튬 완충

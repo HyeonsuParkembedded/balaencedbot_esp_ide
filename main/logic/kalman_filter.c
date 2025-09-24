@@ -5,7 +5,7 @@
  * 1차원 칼만 필터의 예측 및 업데이트 단계를 구현합니다.
  * IMU 센서 융합을 위한 최적화된 알고리즘으로, 실시간 처리에 적합합니다.
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

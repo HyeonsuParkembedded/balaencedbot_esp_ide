@@ -5,8 +5,8 @@
  * BLE 및 다른 통신 채널을 통한 로봇 제어 및 상태 교환을 위한
  * 바이너리 프로토콜을 정의합니다. 안전하고 효율적인 통신을 제공합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 

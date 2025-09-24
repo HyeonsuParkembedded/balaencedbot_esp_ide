@@ -2,18 +2,19 @@
  * @file pwm_driver.h
  * @brief PWM 신호 생성 드라이버 헤더 파일
  * 
- * ESP32-S3의 LEDC 컨트롤러를 사용한 PWM 신호 생성 드라이버입니다.
+ * ESP32-C6의 LEDC 컨트롤러를 사용한 PWM 신호 생성 드라이버입니다.
  * 모터 제어와 서보 모터 제어에 사용됩니다.
  * 
  * 지원 기능:
  * - 다중 채널 PWM 제어
  * - 가변 듀티 사이클 설정
- * - 고정밀 13비트 해상도
+ * - 고정밀 10비트 해상도
  * - 5kHz 주파수 (모터용)
+ * - ESP32-C6 최적화
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
- * @version 1.0
+ * @version 2.0
  */
 
 #ifndef PWM_DRIVER_H
@@ -45,12 +46,14 @@ extern "C" {
  * @brief PWM 드라이버 전역 초기화
  * 
  * LEDC 타이머를 설정하고 PWM 신호 생성을 위한 기본 설정을 수행합니다.
+ * ESP32-C6에 최적화된 설정을 적용합니다.
  * 
  * 설정 파라미터:
  * - 주파수: 5kHz (모터 제어에 적합)
- * - 해상도: 13비트 (0-8191)
+ * - 해상도: 10비트 (0-1023)
  * - 타이머: LEDC_TIMER_0
  * - 모드: LEDC_LOW_SPEED_MODE
+ * - 클록: LEDC_AUTO_CLK (ESP32-C6 자동 선택)
  * 
  * @return esp_err_t 
  *         - ESP_OK: 초기화 성공
@@ -80,18 +83,19 @@ esp_err_t pwm_channel_init(gpio_num_t gpio, ledc_channel_t channel);
  * @brief PWM 듀티 사이클 설정
  * 
  * 지정된 채널의 PWM 듀티 사이클을 설정합니다.
+ * 10비트 해상도로 정밀한 제어가 가능합니다.
  * 
  * @param channel 제어할 LEDC 채널 번호
- * @param duty 듀티 사이클 값 (0 ~ 8191, 13비트 해상도)
+ * @param duty 듀티 사이클 값 (0 ~ 1023, 10비트 해상도)
  *             - 0: 0% 듀티 (항상 LOW)
- *             - 4095: 50% 듀티
- *             - 8191: 100% 듀티 (항상 HIGH)
+ *             - 512: 50% 듀티
+ *             - 1023: 100% 듀티 (항상 HIGH)
  * @return esp_err_t 
  *         - ESP_OK: 듀티 설정 성공
  *         - ESP_FAIL: 듀티 설정 실패
  * 
  * @note 변경된 듀티는 즉시 적용됩니다.
- * @warning duty 값이 8191을 초과하면 8191로 제한됩니다.
+ * @warning duty 값이 1023을 초과하면 1023으로 제한됩니다.
  */
 esp_err_t pwm_set_duty(ledc_channel_t channel, uint32_t duty);
 

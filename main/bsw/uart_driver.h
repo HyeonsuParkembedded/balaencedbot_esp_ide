@@ -11,7 +11,7 @@
  * - 타임아웃 기반 읽기
  * - 효율적인 버퍼 관리
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

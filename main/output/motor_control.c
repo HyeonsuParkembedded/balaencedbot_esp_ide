@@ -5,8 +5,8 @@
  * H-브리지와 PWM을 사용한 DC 모터 제어 기능을 구현합니다.
  * 방향 제어를 위한 GPIO와 속도 제어를 위한 PWM을 조합하여 사용합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 

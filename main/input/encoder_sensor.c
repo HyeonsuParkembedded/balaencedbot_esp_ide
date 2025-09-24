@@ -5,7 +5,7 @@
  * Quadrature 엔코더의 A/B 상 신호를 인터럽트로 처리하여
  * 모터의 회전 방향과 위치를 실시간으로 추적합니다.
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

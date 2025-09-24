@@ -11,7 +11,7 @@
  * - 바이어스 추정 및 보정
  * - 실시간 각도 추정
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

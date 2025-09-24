@@ -12,7 +12,7 @@
  * - 위성 개수 모니터링
  * - 고도 정보 읽기
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

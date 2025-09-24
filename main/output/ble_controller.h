@@ -5,8 +5,8 @@
  * 이 모듈은 ESP32의 BLE 기능을 사용하여 외부 기기(모바일 앱)와의
  * 무선 통신을 제공합니다. 원격 제어 명령 수신 및 로봇 상태 전송을 담당합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 

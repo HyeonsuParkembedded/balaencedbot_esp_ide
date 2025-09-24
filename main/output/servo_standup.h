@@ -5,8 +5,8 @@
  * 밸런싱 로봇이 넘어졌을 때 다시 일어설 수 있도록 도와주는
  * 서보 모터 기반 기립 보조 메커니즘을 제어합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 

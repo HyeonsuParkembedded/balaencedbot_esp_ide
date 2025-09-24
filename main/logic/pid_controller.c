@@ -5,7 +5,7 @@
  * 표준 PID 알고리즘과 밸런싱 로봇을 위한 이중 루프 제어를 구현합니다.
  * 적분 와인드업 방지와 미분 킥 방지 기능이 포함되어 있습니다.
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

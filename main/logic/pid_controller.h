@@ -11,7 +11,7 @@
  * - 적분 와인드업 방지
  * - 이중 루프 밸런싱 제어 (각도 + 속도)
  * 
- * @author BalanceBot Team
+ * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
  * @version 1.0
  */

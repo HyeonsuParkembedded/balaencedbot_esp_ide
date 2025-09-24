@@ -5,8 +5,8 @@
  * 바이너리 프로토콜의 메시지 인코딩, 디코딩, 검증 및
  * 체크섬 계산 기능을 구현합니다.
  * 
- * @author BalanceBot Team
- * @date 2024-12-19
+ * @author Hyeonsu Park, Suyong Kim
+ * @date 2025-09-20
  * @version 1.0
  */
 
