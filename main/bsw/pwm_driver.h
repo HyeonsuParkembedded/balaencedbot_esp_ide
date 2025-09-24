@@ -20,15 +20,8 @@
 #ifndef PWM_DRIVER_H
 #define PWM_DRIVER_H
 
-#ifndef NATIVE_BUILD
 #include "esp_err.h"
 #include "driver/gpio.h"
-#else
-typedef int esp_err_t;
-typedef int gpio_num_t;
-#define ESP_OK 0
-#define ESP_FAIL -1
-#endif
 
 // BSW 추상화 계층 - PWM 채널 타입 정의
 typedef enum {
@@ -109,6 +102,35 @@ esp_err_t pwm_channel_init(gpio_num_t gpio, pwm_channel_t channel);
  * @warning duty 값이 1023을 초과하면 1023으로 제한됩니다.
  */
 esp_err_t pwm_set_duty(pwm_channel_t channel, uint32_t duty);
+
+/**
+ * @brief 서보 모터용 PWM 채널 초기화
+ * 
+ * 서보 모터 제어에 특화된 PWM 채널을 초기화합니다.
+ * 50Hz 주파수와 14비트 해상도를 사용합니다.
+ * 
+ * @param gpio PWM 출력할 GPIO 핀 번호
+ * @param channel 사용할 PWM 채널 번호 (PWM_CHANNEL_0 ~ PWM_CHANNEL_7)
+ * @return esp_err_t 
+ *         - ESP_OK: 채널 설정 성공
+ *         - ESP_FAIL: 채널 설정 실패
+ * 
+ * @note 서보 모터 전용 타이머(LEDC_TIMER_1)를 사용합니다.
+ */
+esp_err_t pwm_servo_init(gpio_num_t gpio, pwm_channel_t channel);
+
+/**
+ * @brief 서보 모터용 PWM 듀티 사이클 설정
+ * 
+ * 서보 모터 제어용 14비트 해상도로 듀티 사이클을 설정합니다.
+ * 
+ * @param channel 제어할 PWM 채널 번호
+ * @param duty 듀티 사이클 값 (0 ~ 16383, 14비트 해상도)
+ * @return esp_err_t 
+ *         - ESP_OK: 듀티 설정 성공
+ *         - ESP_FAIL: 듀티 설정 실패
+ */
+esp_err_t pwm_servo_set_duty(pwm_channel_t channel, uint32_t duty);
 
 /** @} */ // PWM_DRIVER
 

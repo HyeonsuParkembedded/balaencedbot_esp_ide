@@ -20,16 +20,8 @@
 #define UART_DRIVER_H
 
 #include <stdint.h>
-
-#ifndef NATIVE_BUILD
 #include "esp_err.h"
 #include "driver/gpio.h"
-#else
-typedef int esp_err_t;
-typedef int gpio_num_t;
-#define ESP_OK 0
-#define ESP_FAIL -1
-#endif
 
 // BSW 추상화 계층 - UART 포트 타입 정의
 typedef enum {

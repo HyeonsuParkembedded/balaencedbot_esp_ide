@@ -11,8 +11,6 @@
  */
 
 #include "ble_driver.h"
-
-#ifndef NATIVE_BUILD
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_gatt_common_api.h"
@@ -574,67 +572,3 @@ static connection_info_t* get_free_connection_slot(void)
     }
     return NULL;
 }
-
-#else // NATIVE_BUILD
-
-// 네이티브 빌드용 스텁 구현
-esp_err_t ble_driver_init(const char* device_name, ble_event_callback_t callback, void* user_data)
-{
-    return ESP_OK;
-}
-
-esp_err_t ble_create_service(const ble_uuid_t* service_uuid, ble_service_handle_t* service_handle)
-{
-    if (service_handle) *service_handle = 1;
-    return ESP_OK;
-}
-
-esp_err_t ble_add_characteristic(ble_service_handle_t service_handle, 
-                                const ble_uuid_t* char_uuid,
-                                ble_char_properties_t properties,
-                                ble_char_handle_t* char_handle)
-{
-    if (char_handle) *char_handle = 1;
-    return ESP_OK;
-}
-
-esp_err_t ble_start_service(ble_service_handle_t service_handle)
-{
-    return ESP_OK;
-}
-
-esp_err_t ble_start_advertising(void)
-{
-    return ESP_OK;
-}
-
-esp_err_t ble_send_data(ble_conn_handle_t conn_handle, 
-                       ble_char_handle_t char_handle,
-                       const uint8_t* data, 
-                       size_t length,
-                       bool is_notification)
-{
-    return ESP_OK;
-}
-
-bool ble_is_connected(ble_conn_handle_t conn_handle)
-{
-    return false;
-}
-
-ble_uuid_t ble_uuid_from_16(uint16_t uuid16)
-{
-    ble_uuid_t uuid = {0};
-    uuid.type = 0;
-    uuid.uuid16 = uuid16;
-    return uuid;
-}
-
-ble_uuid_t ble_uuid_from_128(const uint8_t uuid128[16])
-{
-    ble_uuid_t uuid = {0};
-    uuid.type = 1;
-    return uuid;
-}
-
-#endif // NATIVE_BUILD

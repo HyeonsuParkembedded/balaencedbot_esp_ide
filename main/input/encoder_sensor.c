@@ -11,18 +11,11 @@
  */
 
 #include "encoder_sensor.h"
-#ifndef NATIVE_BUILD
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#endif
+#include "../bsw/system_services.h"
+#include "../bsw/gpio_driver.h"
 #include <math.h>
 
-#ifndef NATIVE_BUILD
-static const char* ENCODER_TAG = "ENCODER_SENSOR"; ///< ESP-IDF 로깅 태그
-#else
-#define ENCODER_TAG "ENCODER_SENSOR" ///< 네이티브 빌드용 로깅 태그
-#endif
+static const char* ENCODER_TAG = "ENCODER_SENSOR"; ///< 로깅 태그
 
 /**
  * @brief 엔코더 인터럽트 서비스 루틴
@@ -35,16 +28,8 @@ static const char* ENCODER_TAG = "ENCODER_SENSOR"; ///< ESP-IDF 로깅 태그
 static void IRAM_ATTR encoder_isr_handler(void* arg) {
     encoder_sensor_t* encoder = (encoder_sensor_t*)arg;
 
-#ifndef NATIVE_BUILD
-    int msb = gpio_get_level(encoder->encoder_pin_a);
-    int lsb = gpio_get_level(encoder->encoder_pin_b);
-#else
-    // Mock for native build
-    static int mock_counter = 0;
-    int msb = (mock_counter >> 1) & 1;
-    int lsb = mock_counter & 1;
-    mock_counter++;
-#endif
+    int msb = bsw_gpio_get_level(encoder->encoder_pin_a);
+    int lsb = bsw_gpio_get_level(encoder->encoder_pin_b);
 
     int encoded = (msb << 1) | lsb;
     int sum = (encoder->last_encoded << 2) | encoded;
@@ -91,44 +76,42 @@ esp_err_t encoder_sensor_init(encoder_sensor_t* encoder,
     encoder->last_position = 0;
     encoder->current_speed = 0.0f;
 
-#ifndef NATIVE_BUILD
     // Configure encoder pins
-    gpio_config_t encoder_config = {
+    bsw_gpio_config_t encoder_config = {
         .pin_bit_mask = (1ULL << pin_a) | (1ULL << pin_b),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_ANYEDGE,
+        .mode = BSW_GPIO_MODE_INPUT,
+        .pull_up_en = BSW_GPIO_PULLUP_ENABLE,
+        .pull_down_en = BSW_GPIO_PULLDOWN_DISABLE,
+        .intr_type = BSW_GPIO_INTR_ANYEDGE,
     };
-    esp_err_t ret = gpio_config(&encoder_config);
+    esp_err_t ret = bsw_gpio_config(&encoder_config);
     if (ret != ESP_OK) {
-        ESP_LOGE(ENCODER_TAG, "Failed to configure encoder GPIO");
+        BSW_LOGE(ENCODER_TAG, "Failed to configure encoder GPIO");
         return ret;
     }
 
     // Install interrupt service
-    ret = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+    ret = bsw_gpio_install_isr_service(BSW_INTR_FLAG_IRAM);
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(ENCODER_TAG, "Failed to install ISR service");
+        BSW_LOGE(ENCODER_TAG, "Failed to install ISR service");
         return ret;
     }
 
     // Add ISR handlers
-    ret = gpio_isr_handler_add(pin_a, encoder_isr_handler, encoder);
+    ret = bsw_gpio_isr_handler_add(pin_a, encoder_isr_handler, encoder);
     if (ret != ESP_OK) {
-        ESP_LOGE(ENCODER_TAG, "Failed to add ISR handler for encoder A");
+        BSW_LOGE(ENCODER_TAG, "Failed to add ISR handler for encoder A");
         return ret;
     }
 
-    ret = gpio_isr_handler_add(pin_b, encoder_isr_handler, encoder);
+    ret = bsw_gpio_isr_handler_add(pin_b, encoder_isr_handler, encoder);
     if (ret != ESP_OK) {
-        ESP_LOGE(ENCODER_TAG, "Failed to add ISR handler for encoder B");
+        BSW_LOGE(ENCODER_TAG, "Failed to add ISR handler for encoder B");
         return ret;
     }
 
-    encoder->last_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    ESP_LOGI(ENCODER_TAG, "Encoder sensor initialized");
-#endif
+    encoder->last_time = bsw_get_time_ms();
+    BSW_LOGI(ENCODER_TAG, "Encoder sensor initialized");
 
     return ESP_OK;
 }
@@ -145,9 +128,7 @@ void encoder_sensor_reset(encoder_sensor_t* encoder) {
     encoder->encoder_count = 0;
     encoder->last_position = 0;
     encoder->current_speed = 0.0f;
-#ifndef NATIVE_BUILD
-    encoder->last_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-#endif
+    encoder->last_time = bsw_get_time_ms();
 }
 
 /**
@@ -206,8 +187,7 @@ float encoder_sensor_get_speed(const encoder_sensor_t* encoder) {
  * @return ESP_OK 성공
  */
 esp_err_t encoder_sensor_update_speed(encoder_sensor_t* encoder) {
-#ifndef NATIVE_BUILD
-    uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint32_t current_time = bsw_get_time_ms();
     uint32_t time_diff = current_time - encoder->last_time;
 
     if (time_diff >= 100) { // Update every 100ms
@@ -218,6 +198,5 @@ esp_err_t encoder_sensor_update_speed(encoder_sensor_t* encoder) {
         encoder->last_time = current_time;
         encoder->last_position = encoder->encoder_count;
     }
-#endif
     return ESP_OK;
 }

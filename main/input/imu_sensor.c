@@ -12,16 +12,10 @@
 
 #include "imu_sensor.h"
 #include "../bsw/i2c_driver.h"
-#ifndef NATIVE_BUILD
-#include "esp_log.h"
-#endif
+#include "../bsw/system_services.h"
 #include <math.h>
 
-#ifndef NATIVE_BUILD
-static const char* IMU_TAG = "IMU_SENSOR"; ///< ESP-IDF 로깅 태그
-#else
-#define IMU_TAG "IMU_SENSOR" ///< 네이티브 빌드용 로깅 태그
-#endif
+static const char* IMU_TAG = "IMU_SENSOR"; ///< 로깅 태그
 
 /**
  * @defgroup MPU6050_REGISTERS MPU6050 레지스터 주소
@@ -57,7 +51,7 @@ static const char* IMU_TAG = "IMU_SENSOR"; ///< ESP-IDF 로깅 태그
  * @param scl_pin I2C SCL 핀 번호
  * @return ESP_OK 성공, ESP_FAIL 센서 연결 실패 또는 I2C 오류
  */
-esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin) {
+esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_num_t sda_pin, bsw_gpio_num_t scl_pin) {
     sensor->i2c_port = port;
     sensor->data.accel_x = sensor->data.accel_y = sensor->data.accel_z = 0.0f;
     sensor->data.gyro_x = sensor->data.gyro_y = sensor->data.gyro_z = 0.0f;
@@ -78,9 +72,7 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, gpio_num_t 
     }
 
     if (who_am_i != MPU6050_ADDR) {
-#ifndef NATIVE_BUILD
-        ESP_LOGE(IMU_TAG, "MPU6050 not found or wrong ID: 0x%02X", who_am_i);
-#endif
+        BSW_LOGE(IMU_TAG, "MPU6050 not found or wrong ID: 0x%02X", who_am_i);
         return ESP_FAIL;
     }
 
@@ -104,9 +96,7 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, gpio_num_t 
 
     sensor->data.initialized = true;
 
-#ifndef NATIVE_BUILD
-    ESP_LOGI(IMU_TAG, "IMU sensor initialized successfully");
-#endif
+    BSW_LOGI(IMU_TAG, "IMU sensor initialized successfully");
     return ESP_OK;
 }
 

@@ -4,23 +4,17 @@
  * 
  * 시스템 컴포넌트의 초기화 실패나 런타임 오류를 처리하고,
  * 안전한 운영을 위한 복구 메커니즘을 제공합니다.
+ * BSW 추상화 계층을 사용하여 하드웨어 독립성을 보장합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-09-20
- * @version 1.0
+ * @date 2025-09-24
+ * @version 2.0
  */
 
 #ifndef ERROR_RECOVERY_H
 #define ERROR_RECOVERY_H
 
-#ifndef NATIVE_BUILD
-#include "esp_err.h"
-#else
-// Native build - define ESP types
-typedef int esp_err_t;
-#define ESP_OK 0
-#define ESP_FAIL -1
-#endif
+#include "../bsw/system_services.h"  // BSW 시스템 서비스 추상화
 #include <stdbool.h>
 
 #ifdef __cplusplus

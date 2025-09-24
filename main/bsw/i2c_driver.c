@@ -19,13 +19,10 @@
 
 #include "i2c_driver.h"
 #include "config.h"
-#ifndef NATIVE_BUILD
 #include "driver/i2c_master.h"
 #include "hal/i2c_types.h"
 #include "esp_log.h"
-#endif
 
-#ifndef NATIVE_BUILD
 static const char* I2C_TAG = "I2C_DRIVER";
 static i2c_master_bus_handle_t bus_handle = NULL;
 
@@ -33,9 +30,6 @@ static i2c_master_bus_handle_t bus_handle = NULL;
 static const i2c_port_t esp_i2c_port_map[] = {
     I2C_NUM_0  // ESP32-C6는 I2C_NUM_0만 지원
 };
-#else
-#define I2C_TAG "I2C_DRIVER"
-#endif
 
 /**
  * @brief I2C 인터페이스 초기화 구현 (새로운 API 사용)
@@ -54,7 +48,6 @@ static const i2c_port_t esp_i2c_port_map[] = {
  * @return esp_err_t 초기화 결과
  */
 esp_err_t i2c_driver_init(bsw_i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin) {
-#ifndef NATIVE_BUILD
     // 새로운 I2C 마스터 버스 구성
     // BSW 포트를 ESP-IDF 포트로 매핑
     if (port >= BSW_I2C_PORT_MAX) {
@@ -79,7 +72,6 @@ esp_err_t i2c_driver_init(bsw_i2c_port_t port, gpio_num_t sda_pin, gpio_num_t sc
     
     ESP_LOGI(I2C_TAG, "I2C driver initialized on ESP32-C6 with pins SCL=%d, SDA=%d", 
              scl_pin, sda_pin);
-#endif
     return ESP_OK;
 }
 
@@ -101,7 +93,6 @@ esp_err_t i2c_driver_init(bsw_i2c_port_t port, gpio_num_t sda_pin, gpio_num_t sc
  * @return esp_err_t 전송 결과
  */
 esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t value) {
-#ifndef NATIVE_BUILD
     if (bus_handle == NULL) {
         ESP_LOGE(I2C_TAG, "I2C bus not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -135,9 +126,6 @@ esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t r
     }
     
     return ret;
-#else
-    return ESP_OK;
-#endif
 }
 
 /**
@@ -159,7 +147,6 @@ esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t r
  * @return esp_err_t 전송 결과
  */
 esp_err_t i2c_read_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t* data, size_t len) {
-#ifndef NATIVE_BUILD
     if (bus_handle == NULL) {
         ESP_LOGE(I2C_TAG, "I2C bus not initialized");
         return ESP_ERR_INVALID_STATE;
@@ -190,13 +177,6 @@ esp_err_t i2c_read_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t re
     }
     
     return ret;
-#else
-    // 네이티브 빌드용 모의 데이터
-    for (size_t i = 0; i < len; i++) {
-        data[i] = 0x42 + i;
-    }
-    return ESP_OK;
-#endif
 }
 
 /**
@@ -207,7 +187,6 @@ esp_err_t i2c_read_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t re
  * @return esp_err_t 해제 결과
  */
 esp_err_t i2c_driver_deinit(void) {
-#ifndef NATIVE_BUILD
     if (bus_handle != NULL) {
         esp_err_t ret = i2c_del_master_bus(bus_handle);
         if (ret == ESP_OK) {
@@ -218,6 +197,5 @@ esp_err_t i2c_driver_deinit(void) {
         }
         return ret;
     }
-#endif
     return ESP_OK;
 }

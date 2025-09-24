@@ -21,18 +21,8 @@
 #define GPS_SENSOR_H
 
 #include "../bsw/uart_driver.h"
-
-#ifndef NATIVE_BUILD
-#include "hal/uart_types.h"
-#include "driver/gpio.h"
+#include "../bsw/gpio_driver.h"
 #include "esp_err.h"
-#else
-typedef int esp_err_t;
-typedef int gpio_num_t;
-#define ESP_OK 0
-#define ESP_FAIL -1
-#endif
-
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -93,7 +83,7 @@ typedef struct {
  *         - ESP_OK: 초기화 성공
  *         - ESP_FAIL: 초기화 실패
  */
-esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t port, gpio_num_t tx_pin, gpio_num_t rx_pin, int baudrate);
+esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t port, bsw_gpio_num_t tx_pin, bsw_gpio_num_t rx_pin, int baudrate);
 
 /**
  * @brief GPS 데이터 업데이트

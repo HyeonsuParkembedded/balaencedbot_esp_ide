@@ -11,15 +11,10 @@
  */
 
 #include "gps_sensor.h"
-#ifndef NATIVE_BUILD
-#include "esp_log.h"
-#endif
+#include "../bsw/system_services.h"
 #include <string.h>
 #include <stdlib.h>
 
-// Mock functions for native build
-#ifndef NATIVE_BUILD
-#else
 char* strdup(const char* s) {
     size_t len = strlen(s) + 1;
     char* dup = malloc(len);
@@ -28,13 +23,8 @@ char* strdup(const char* s) {
     }
     return dup;
 }
-#endif
 
-#ifndef NATIVE_BUILD
 static const char* GPS_TAG = "GPS_SENSOR";
-#else
-#define GPS_TAG "GPS_SENSOR"
-#endif
 
 /**
  * @brief 도분(degree-minute) 형식을 십진도(decimal degree) 형식으로 변환
@@ -80,7 +70,7 @@ static bool parse_gprmc(gps_sensor_t* gps, const char* sentence);
  * @param baudrate UART 통신 속도 (일반적으로 9600)
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
-esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t port, gpio_num_t tx_pin, gpio_num_t rx_pin, int baudrate) {
+esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t port, bsw_gpio_num_t tx_pin, bsw_gpio_num_t rx_pin, int baudrate) {
     gps->uart_port = port;
     gps->data.latitude = 0.0;
     gps->data.longitude = 0.0;
@@ -96,9 +86,7 @@ esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t port, gpio_num_t tx_
 
     gps->data.initialized = true;
 
-#ifndef NATIVE_BUILD
-    ESP_LOGI(GPS_TAG, "GPS sensor initialized");
-#endif
+    BSW_LOGI(GPS_TAG, "GPS sensor initialized");
     return ESP_OK;
 }
 

@@ -20,16 +20,8 @@
 #ifndef I2C_DRIVER_H
 #define I2C_DRIVER_H
 
-#ifndef NATIVE_BUILD
 #include "driver/gpio.h"       // GPIO 타입 정의 (gpio_num_t)
 #include "esp_err.h"
-#else
-typedef int esp_err_t;
-typedef int gpio_num_t;
-#define ESP_OK 0
-#define ESP_FAIL -1
-#endif
-
 #include <stdint.h>
 
 // BSW 추상화 계층 - I2C 포트 타입 정의

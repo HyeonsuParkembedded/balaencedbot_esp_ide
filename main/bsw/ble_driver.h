@@ -19,14 +19,7 @@
 #ifndef BLE_DRIVER_H
 #define BLE_DRIVER_H
 
-#ifndef NATIVE_BUILD
 #include "esp_err.h"
-#else
-typedef int esp_err_t;
-#define ESP_OK 0
-#define ESP_FAIL -1
-#endif
-
 #include <stdint.h>
 #include <stdbool.h>
 

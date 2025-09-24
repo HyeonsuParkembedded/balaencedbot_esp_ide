@@ -4,33 +4,17 @@
  * 
  * 컴포넌트 초기화 재시도, 실패 처리, 안전 모드 전환 등의
  * 시스템 안정성 관련 기능을 구현합니다.
+ * BSW 추상화 계층을 사용하여 하드웨어 독립성을 보장합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-09-20
- * @version .0
+ * @date 2025-09-24
+ * @version 2.0
  */
 
 #include "error_recovery.h"
-#include "config.h"
+#include "../config.h"
+#include "../bsw/system_services.h"  // BSW 시스템 서비스 추상화
 #include <string.h>
-#ifndef NATIVE_BUILD
-#include "esp_log.h"
-#include "esp_system.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#else
-// Native build - mock ESP functions
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#define ESP_LOGI(tag, format, ...) printf("[INFO] " tag ": " format "\n", ##__VA_ARGS__)
-#define ESP_LOGW(tag, format, ...) printf("[WARN] " tag ": " format "\n", ##__VA_ARGS__)
-#define ESP_LOGE(tag, format, ...) printf("[ERROR] " tag ": " format "\n", ##__VA_ARGS__)
-#define esp_err_to_name(err) ((err == ESP_OK) ? "ESP_OK" : "ESP_FAIL")
-#define vTaskDelay(ticks) // No-op for native
-#define pdMS_TO_TICKS(ms) (ms)
-#define esp_restart() exit(1)
-#endif
 
 static const char* TAG = "ERROR_RECOVERY";  ///< 로깅 태그
 
@@ -46,7 +30,7 @@ static bool safe_mode_active = false;           ///< 안전 모드 활성화 플
  * @return esp_err_t 초기화 결과
  */
 esp_err_t error_recovery_init(void) {
-    ESP_LOGI(TAG, "Error recovery system initialized");
+    BSW_LOGI(TAG, "Error recovery system initialized");
     return ESP_OK;
 }
 
@@ -66,7 +50,7 @@ bool initialize_component_with_retry(component_info_t* component) {
         return false;
     }
 
-    ESP_LOGI(TAG, "Initializing component: %s", component->name);
+    BSW_LOGI(TAG, "Initializing component: %s", component->name);
     
     // 설정된 횟수만큼 초기화 재시도
     for (int retry = 0; retry < CONFIG_MAX_INIT_RETRIES; retry++) {
@@ -74,7 +58,7 @@ bool initialize_component_with_retry(component_info_t* component) {
         if (ret == ESP_OK) {
             component->initialized = true;
             component->retry_count = retry;
-            ESP_LOGI(TAG, "Component %s initialized successfully", component->name);
+            BSW_LOGI(TAG, "Component %s initialized successfully", component->name);
             
             // 시스템 컴포넌트 목록에 추가
             if (component_count < 10) {
@@ -83,11 +67,12 @@ bool initialize_component_with_retry(component_info_t* component) {
             return true;
         }
         
-        ESP_LOGW(TAG, "%s initialization failed (attempt %d/%d): %s", 
-                component->name, retry + 1, CONFIG_MAX_INIT_RETRIES, esp_err_to_name(ret));
+        BSW_LOGW(TAG, "%s initialization failed (attempt %d/%d): %s", 
+                component->name, retry + 1, CONFIG_MAX_INIT_RETRIES, 
+                (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         
         if (retry < CONFIG_MAX_INIT_RETRIES - 1) {
-            vTaskDelay(pdMS_TO_TICKS(CONFIG_ERROR_RECOVERY_DELAY));
+            bsw_delay_ms(CONFIG_ERROR_RECOVERY_DELAY);
         }
     }
     
@@ -110,22 +95,22 @@ bool initialize_component_with_retry(component_info_t* component) {
  * @param component 실패한 컴포넌트 정보
  */
 void handle_component_failure(component_info_t* component) {
-    ESP_LOGE(TAG, "Component %s failed after %d retries", 
+    BSW_LOGE(TAG, "Component %s failed after %d retries", 
             component->name, component->retry_count);
     
     switch (component->priority) {
     case COMPONENT_CRITICAL:
-        ESP_LOGE(TAG, "Critical component %s failed - entering safe mode", component->name);
+        BSW_LOGE(TAG, "Critical component %s failed - entering safe mode", component->name);
         enter_safe_mode();
         break;
         
     case COMPONENT_IMPORTANT:
-        ESP_LOGW(TAG, "Important component %s failed - continuing with limited functionality", 
+        BSW_LOGW(TAG, "Important component %s failed - continuing with limited functionality", 
                 component->name);
         break;
         
     case COMPONENT_OPTIONAL:
-        ESP_LOGI(TAG, "Optional component %s failed - continuing normally", component->name);
+        BSW_LOGI(TAG, "Optional component %s failed - continuing normally", component->name);
         break;
     }
 }
@@ -141,7 +126,7 @@ void handle_component_failure(component_info_t* component) {
  */
 bool is_component_operational(const char* name) {
     for (int i = 0; i < component_count; i++) {
-        if (strcmp(system_components[i].name, name) == 0) {
+        if (bsw_strcmp(system_components[i].name, name) == 0) {
             return system_components[i].initialized;
         }
     }
@@ -156,17 +141,17 @@ bool is_component_operational(const char* name) {
  */
 void enter_safe_mode(void) {
     safe_mode_active = true;
-    ESP_LOGE(TAG, "ENTERING SAFE MODE - System will restart in %d seconds", 
+    BSW_LOGE(TAG, "ENTERING SAFE MODE - System will restart in %d seconds", 
             CONFIG_ERROR_RECOVERY_DELAY / 1000);
     
     // 재시작 전 시스템 상태 기록
     log_system_health();
     
     // 로그 출력을 위한 대기 시간
-    vTaskDelay(pdMS_TO_TICKS(CONFIG_ERROR_RECOVERY_DELAY));
+    bsw_delay_ms(CONFIG_ERROR_RECOVERY_DELAY);
     
-    ESP_LOGE(TAG, "Restarting system...");
-    esp_restart();
+    BSW_LOGE(TAG, "Restarting system...");
+    bsw_system_restart();
 }
 
 /**
@@ -176,17 +161,17 @@ void enter_safe_mode(void) {
  * 안전 모드 상태, 컴포넌트별 초기화 상태, 재시도 횟수 등을 포함합니다.
  */
 void log_system_health(void) {
-    ESP_LOGI(TAG, "=== SYSTEM HEALTH REPORT ===");
-    ESP_LOGI(TAG, "Safe mode active: %s", safe_mode_active ? "YES" : "NO");
-    ESP_LOGI(TAG, "Total components: %d", component_count);
+    BSW_LOGI(TAG, "=== SYSTEM HEALTH REPORT ===");
+    BSW_LOGI(TAG, "Safe mode active: %s", safe_mode_active ? "YES" : "NO");
+    BSW_LOGI(TAG, "Total components: %d", component_count);
     
     // 모든 컴포넌트 상태 출력
     for (int i = 0; i < component_count; i++) {
-        ESP_LOGI(TAG, "Component %s: %s (retries: %d, priority: %d)", 
+        BSW_LOGI(TAG, "Component %s: %s (retries: %d, priority: %d)", 
                 system_components[i].name,
                 system_components[i].initialized ? "OK" : "FAILED",
                 system_components[i].retry_count,
                 system_components[i].priority);
     }
-    ESP_LOGI(TAG, "========================");
+    BSW_LOGI(TAG, "========================");
 }

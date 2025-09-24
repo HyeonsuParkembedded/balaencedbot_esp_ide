@@ -12,9 +12,8 @@
 
 #include "ble_controller.h"
 #include "../system/protocol.h"
-
-#ifndef NATIVE_BUILD
-#include "esp_log.h"
+#include "../bsw/system_services.h"  // BSW 시스템 서비스 추상화
+#include "../bsw/ble_driver.h"       // BSW BLE 드라이버 추상화
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,7 +50,7 @@ static void ble_event_handler(const ble_event_t* event, void* user_data);
  */
 esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     if (!ble || !device_name) {
-        ESP_LOGE(TAG, "Invalid parameters");
+        BSW_LOGE(TAG, "Invalid parameters");
         return ESP_FAIL;
     }
     
@@ -73,7 +72,7 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     // BSW BLE 드라이버 초기화
     esp_err_t ret = ble_driver_init(device_name, ble_event_handler, ble);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize BLE driver: %s", esp_err_to_name(ret));
+        BSW_LOGE(TAG, "Failed to initialize BLE driver: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
@@ -81,7 +80,7 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     ble_uuid_t service_uuid_struct = ble_uuid_from_128(service_uuid);
     ret = ble_create_service(&service_uuid_struct, &ble->service_handle);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create BLE service: %s", esp_err_to_name(ret));
+        BSW_LOGE(TAG, "Failed to create BLE service: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
@@ -91,7 +90,7 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
                                 BLE_CHAR_PROP_READ | BLE_CHAR_PROP_WRITE,
                                 &ble->command_char_handle);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to add command characteristic: %s", esp_err_to_name(ret));
+        BSW_LOGE(TAG, "Failed to add command characteristic: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
@@ -101,25 +100,25 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
                                 BLE_CHAR_PROP_READ | BLE_CHAR_PROP_NOTIFY,
                                 &ble->status_char_handle);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to add status characteristic: %s", esp_err_to_name(ret));
+        BSW_LOGE(TAG, "Failed to add status characteristic: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
     // 서비스 시작
     ret = ble_start_service(ble->service_handle);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start BLE service: %s", esp_err_to_name(ret));
+        BSW_LOGE(TAG, "Failed to start BLE service: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
     // 광고 시작
     ret = ble_start_advertising();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start BLE advertising: %s", esp_err_to_name(ret));
+        BSW_LOGE(TAG, "Failed to start BLE advertising: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
-    ESP_LOGI(TAG, "BLE Controller initialized successfully");
+    BSW_LOGI(TAG, "BLE Controller initialized successfully");
     return ESP_OK;
 }
 
@@ -168,7 +167,7 @@ esp_err_t ble_controller_send_status(ble_controller_t* ble, float angle, float v
     int encoded_len = encode_message(&msg, buffer, sizeof(buffer));
     
     if (encoded_len <= 0) {
-        ESP_LOGE(TAG, "Failed to encode status message");
+        BSW_LOGE(TAG, "Failed to encode status message");
         return ESP_FAIL;
     }
     
@@ -176,11 +175,11 @@ esp_err_t ble_controller_send_status(ble_controller_t* ble, float angle, float v
     esp_err_t ret = ble_send_data(ble->conn_handle, ble->status_char_handle,
                                  buffer, encoded_len, true);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to send BLE notification: %s", esp_err_to_name(ret));
+        BSW_LOGE(TAG, "Failed to send BLE notification: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
     
-    ESP_LOGD(TAG, "Status sent: angle=%.2f, vel=%.2f, battery=%d%%", 
+    BSW_LOGD(TAG, "Status sent: angle=%.2f, vel=%.2f, battery=%d%%", 
              angle, velocity, battery_percentage);
     
     return ESP_OK;
@@ -195,13 +194,13 @@ esp_err_t ble_controller_process_packet(ble_controller_t* ble, const uint8_t* da
     // 메시지 디코딩
     int result = decode_message(data, (int)length, &msg);
     if (result <= 0) {
-        ESP_LOGE(TAG, "Failed to decode message: %d", result);
+        BSW_LOGE(TAG, "Failed to decode message: %d", result);
         return ESP_FAIL;
     }
     
     // 메시지 유효성 검증
     if (!validate_message(&msg)) {
-        ESP_LOGE(TAG, "Message validation failed");
+        BSW_LOGE(TAG, "Message validation failed");
         return ESP_FAIL;
     }
     
@@ -221,7 +220,7 @@ esp_err_t ble_controller_process_packet(ble_controller_t* ble, const uint8_t* da
             ble->current_command.balance = (cmd->flags & CMD_FLAG_BALANCE) != 0;
             ble->current_command.standup = (cmd->flags & CMD_FLAG_STANDUP) != 0;
             
-            ESP_LOGD(TAG, "Move command: dir=%d, turn=%d, speed=%d, balance=%s, standup=%s", 
+            BSW_LOGD(TAG, "Move command: dir=%d, turn=%d, speed=%d, balance=%s, standup=%s", 
                      ble->current_command.direction, 
                      ble->current_command.turn, 
                      ble->current_command.speed,
@@ -231,13 +230,13 @@ esp_err_t ble_controller_process_packet(ble_controller_t* ble, const uint8_t* da
         }
         
         case MSG_TYPE_CONFIG_SET: {
-            ESP_LOGI(TAG, "Config set command received");
+            BSW_LOGI(TAG, "Config set command received");
             // PID 설정 등 필요 시 처리
             break;
         }
         
         default:
-            ESP_LOGW(TAG, "Unknown message type: 0x%02X", msg.header.msg_type);
+            BSW_LOGW(TAG, "Unknown message type: 0x%02X", msg.header.msg_type);
             return ESP_FAIL;
     }
     
@@ -249,7 +248,7 @@ esp_err_t ble_controller_process_packet(ble_controller_t* ble, const uint8_t* da
  */
 void ble_controller_parse_command(ble_controller_t* ble, const char* command) {
     // 이전 버전 호환성을 위해 유지되지만 구현되지 않음
-    ESP_LOGW(TAG, "Legacy command parsing not implemented: %s", command);
+    BSW_LOGW(TAG, "Legacy command parsing not implemented: %s", command);
 }
 
 /**
@@ -263,77 +262,37 @@ static void ble_event_handler(const ble_event_t* event, void* user_data) {
 
     switch (event->type) {
         case BLE_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "BLE Client connected");
+            BSW_LOGI(TAG, "BLE Client connected");
             ble->device_connected = true;
             ble->conn_handle = event->conn_handle;
             break;
 
         case BLE_EVENT_DISCONNECTED:
-            ESP_LOGI(TAG, "BLE Client disconnected");
+            BSW_LOGI(TAG, "BLE Client disconnected");
             ble->device_connected = false;
             ble->conn_handle = 0;
             break;
 
         case BLE_EVENT_DATA_RECEIVED:
-            ESP_LOGI(TAG, "BLE Data received, length: %d", event->data_received.length);
+            BSW_LOGI(TAG, "BLE Data received, length: %d", event->data_received.length);
             // 명령 특성에 데이터가 수신된 경우만 처리
             if (event->data_received.char_handle == ble->command_char_handle) {
                 esp_err_t ret = ble_controller_process_packet(ble,
                                                             event->data_received.data,
                                                             event->data_received.length);
                 if (ret != ESP_OK) {
-                    ESP_LOGW(TAG, "Failed to process command packet");
+                    BSW_LOGW(TAG, "Failed to process command packet");
                 }
             }
             break;
 
         case BLE_EVENT_SERVICE_STARTED:
-            ESP_LOGI(TAG, "BLE Service started");
+            BSW_LOGI(TAG, "BLE Service started");
             break;
 
         default:
-            ESP_LOGD(TAG, "Unknown BLE event: %d", event->type);
+            BSW_LOGD(TAG, "Unknown BLE event: %d", event->type);
             break;
     }
 }
 
-#else // NATIVE_BUILD
-
-// 네이티브 빌드용 스텁 구현
-esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
-    if (ble) {
-        ble->device_connected = false;
-        ble->current_command.direction = 0;
-        ble->current_command.turn = 0;
-        ble->current_command.speed = 0;
-        ble->current_command.balance = true;
-        ble->current_command.standup = false;
-    }
-    return ESP_OK;
-}
-
-void ble_controller_update(ble_controller_t* ble) {
-    // 네이티브 빌드에서는 아무것도 하지 않음
-}
-
-remote_command_t ble_controller_get_command(const ble_controller_t* ble) {
-    return ble->current_command;
-}
-
-bool ble_controller_is_connected(const ble_controller_t* ble) {
-    return ble->device_connected;
-}
-
-esp_err_t ble_controller_send_status(ble_controller_t* ble, float angle, float velocity, float battery_voltage) {
-    return ESP_OK;
-}
-
-esp_err_t ble_controller_process_packet(ble_controller_t* ble, const uint8_t* data, size_t length) {
-    return ESP_OK;
-}
-
-void ble_controller_parse_command(ble_controller_t* ble, const char* command) {
-    // 네이티브 빌드에서는 아무것도 하지 않음
-}
-
-#endif // NATIVE_BUILD

@@ -18,12 +18,9 @@
  */
 
 #include "pwm_driver.h"
-#ifndef NATIVE_BUILD
 #include "driver/ledc.h"
 #include "esp_log.h"
-#endif
 
-#ifndef NATIVE_BUILD
 static const char* PWM_TAG = "PWM_DRIVER"; ///< ESP-IDF 로깅 태그
 
 // ESP-IDF LEDC 채널 매핑
@@ -31,9 +28,6 @@ static const ledc_channel_t ledc_channel_map[] = {
     LEDC_CHANNEL_0, LEDC_CHANNEL_1, LEDC_CHANNEL_2, LEDC_CHANNEL_3,
     LEDC_CHANNEL_4, LEDC_CHANNEL_5  // ESP32-C6는 6개 채널만 지원
 };
-#else
-#define PWM_TAG "PWM_DRIVER" ///< 네이티브 빌드용 로깅 태그
-#endif
 
 static bool pwm_timer_initialized = false; ///< PWM 타이머 초기화 상태 플래그
 
@@ -57,7 +51,6 @@ esp_err_t pwm_driver_init(void) {
         return ESP_OK; // 이미 초기화됨
     }
 
-#ifndef NATIVE_BUILD
     ledc_timer_config_t ledc_timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .timer_num = LEDC_TIMER_0,
@@ -72,7 +65,6 @@ esp_err_t pwm_driver_init(void) {
     }
     
     ESP_LOGI(PWM_TAG, "PWM timer initialized successfully on ESP32-C6 (10-bit, 5kHz)");
-#endif
 
     pwm_timer_initialized = true;
     return ESP_OK;
@@ -95,7 +87,6 @@ esp_err_t pwm_driver_init(void) {
  * @return esp_err_t 채널 설정 결과
  */
 esp_err_t pwm_channel_init(gpio_num_t gpio, pwm_channel_t channel) {
-#ifndef NATIVE_BUILD
     // 추상화된 채널을 ESP-IDF LEDC 채널로 변환
     if (channel >= PWM_CHANNEL_MAX) {
         ESP_LOGE(PWM_TAG, "Invalid PWM channel: %d", channel);
@@ -121,7 +112,6 @@ esp_err_t pwm_channel_init(gpio_num_t gpio, pwm_channel_t channel) {
     }
     
     ESP_LOGI(PWM_TAG, "PWM channel %d configured on GPIO %d", channel, gpio);
-#endif
     return ESP_OK;
 }
 
@@ -139,7 +129,6 @@ esp_err_t pwm_channel_init(gpio_num_t gpio, pwm_channel_t channel) {
  * @return esp_err_t 듀티 설정 결과
  */
 esp_err_t pwm_set_duty(pwm_channel_t channel, uint32_t duty) {
-#ifndef NATIVE_BUILD
     // 채널 유효성 검사
     if (channel >= PWM_CHANNEL_MAX) {
         ESP_LOGE(PWM_TAG, "Invalid PWM channel: %d", channel);
@@ -170,8 +159,93 @@ esp_err_t pwm_set_duty(pwm_channel_t channel, uint32_t duty) {
     }
     
     return ret;
-#else
-    // 네이티브 빌드: 모의 동작
+}
+
+static bool servo_timer_initialized = false; ///< 서보 타이머 초기화 상태
+
+/**
+ * @brief 서보 모터용 PWM 채널 초기화 구현
+ */
+esp_err_t pwm_servo_init(gpio_num_t gpio, pwm_channel_t channel) {
+    // 서보 타이머 초기화 (1회만)
+    if (!servo_timer_initialized) {
+        ledc_timer_config_t ledc_timer = {
+            .speed_mode = LEDC_LOW_SPEED_MODE,
+            .timer_num = LEDC_TIMER_1,  // 서보용 전용 타이머
+            .duty_resolution = LEDC_TIMER_14_BIT,  // 14비트 해상도
+            .freq_hz = 50,  // 서보 모터용 50Hz
+            .clk_cfg = LEDC_AUTO_CLK
+        };
+        
+        esp_err_t ret = ledc_timer_config(&ledc_timer);
+        if (ret != ESP_OK) {
+            ESP_LOGE(PWM_TAG, "Failed to configure servo timer: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        
+        servo_timer_initialized = true;
+        ESP_LOGI(PWM_TAG, "Servo PWM timer initialized (50Hz, 14-bit)");
+    }
+    
+    // 채널 범위 검사
+    if (channel >= PWM_CHANNEL_MAX) {
+        ESP_LOGE(PWM_TAG, "Invalid servo channel %d", channel);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // 채널 설정
+    ledc_channel_config_t ledc_channel = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = ledc_channel_map[channel],
+        .timer_sel = LEDC_TIMER_1,  // 서보 전용 타이머
+        .intr_type = LEDC_INTR_DISABLE,
+        .gpio_num = gpio,
+        .duty = 0,
+        .hpoint = 0
+    };
+    
+    esp_err_t ret = ledc_channel_config(&ledc_channel);
+    if (ret != ESP_OK) {
+        ESP_LOGE(PWM_TAG, "Failed to configure servo channel %d on GPIO %d: %s", 
+                 channel, gpio, esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGI(PWM_TAG, "Servo PWM channel %d initialized on GPIO %d", channel, gpio);
     return ESP_OK;
-#endif
+}
+
+/**
+ * @brief 서보 모터용 PWM 듀티 사이클 설정 구현
+ */
+esp_err_t pwm_servo_set_duty(pwm_channel_t channel, uint32_t duty) {
+    // 채널 유효성 검사
+    if (channel >= PWM_CHANNEL_MAX) {
+        ESP_LOGE(PWM_TAG, "Invalid servo channel %d", channel);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    ledc_channel_t ledc_ch = ledc_channel_map[channel];
+    
+    // 14비트 해상도에서 최대값 확인 (0-16383)
+    if (duty > 16383) {
+        ESP_LOGW(PWM_TAG, "Servo duty value %lu exceeds 14-bit maximum (16383), clamping", duty);
+        duty = 16383;
+    }
+    
+    esp_err_t ret = ledc_set_duty(LEDC_LOW_SPEED_MODE, ledc_ch, duty);
+    if (ret != ESP_OK) {
+        ESP_LOGE(PWM_TAG, "Failed to set servo duty %lu on channel %d: %s", 
+                 duty, channel, esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // 하드웨어에 즉시 적용
+    ret = ledc_update_duty(LEDC_LOW_SPEED_MODE, ledc_ch);
+    if (ret != ESP_OK) {
+        ESP_LOGE(PWM_TAG, "Failed to update servo duty on channel %d: %s", 
+                 channel, esp_err_to_name(ret));
+    }
+    
+    return ret;
 }

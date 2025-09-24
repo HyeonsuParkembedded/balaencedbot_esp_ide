@@ -11,8 +11,6 @@
 
 #include "uart_driver.h"
 
-#ifndef NATIVE_BUILD
-
 // ESP-IDF 헤더는 BSW 헤더 뒤에 포함
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -26,15 +24,11 @@ static const int esp_uart_port_map[] = {
     UART_NUM_0,
     UART_NUM_1
 };
-#else
-#define UART_TAG "UART_DRIVER"
-#endif
 
 /**
  * @brief UART 인터페이스 초기화 구현
  */
 esp_err_t uart_driver_init(bsw_uart_num_t port, uint32_t baudrate, gpio_num_t tx_pin, gpio_num_t rx_pin) {
-#ifndef NATIVE_BUILD
     // 포트 검증
     if (port >= BSW_UART_PORT_MAX) {
         ESP_LOGE(UART_TAG, "Invalid UART port: %d", port);
@@ -79,17 +73,12 @@ esp_err_t uart_driver_init(bsw_uart_num_t port, uint32_t baudrate, gpio_num_t tx
              port, baudrate, tx_pin, rx_pin);
     
     return ESP_OK;
-#else
-    // 네이티브 빌드에서는 성공 반환
-    return 0; // ESP_OK 상당
-#endif
 }
 
 /**
  * @brief UART 데이터 읽기 구현
  */
 int uart_read_data(bsw_uart_num_t port, uint8_t* data, size_t max_len, uint32_t timeout_ms) {
-#ifndef NATIVE_BUILD
     if (port >= BSW_UART_PORT_MAX) {
         ESP_LOGE(UART_TAG, "Invalid UART port: %d", port);
         return -1;
@@ -103,17 +92,12 @@ int uart_read_data(bsw_uart_num_t port, uint8_t* data, size_t max_len, uint32_t 
     }
     
     return len;
-#else
-    // 네이티브 빌드에서는 0 반환
-    return 0;
-#endif
 }
 
 /**
  * @brief UART 데이터 쓰기 구현
  */
 int uart_write_data(bsw_uart_num_t port, const uint8_t* data, size_t len) {
-#ifndef NATIVE_BUILD
     if (port >= BSW_UART_PORT_MAX) {
         ESP_LOGE(UART_TAG, "Invalid UART port: %d", port);
         return -1;
@@ -127,8 +111,4 @@ int uart_write_data(bsw_uart_num_t port, const uint8_t* data, size_t len) {
     }
     
     return written;
-#else
-    // 네이티브 빌드에서는 입력 길이 반환
-    return len;
-#endif
 }
