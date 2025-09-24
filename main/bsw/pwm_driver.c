@@ -19,11 +19,18 @@
 
 #include "pwm_driver.h"
 #ifndef NATIVE_BUILD
+#include "driver/ledc.h"
 #include "esp_log.h"
 #endif
 
 #ifndef NATIVE_BUILD
 static const char* PWM_TAG = "PWM_DRIVER"; ///< ESP-IDF 로깅 태그
+
+// ESP-IDF LEDC 채널 매핑
+static const ledc_channel_t ledc_channel_map[] = {
+    LEDC_CHANNEL_0, LEDC_CHANNEL_1, LEDC_CHANNEL_2, LEDC_CHANNEL_3,
+    LEDC_CHANNEL_4, LEDC_CHANNEL_5  // ESP32-C6는 6개 채널만 지원
+};
 #else
 #define PWM_TAG "PWM_DRIVER" ///< 네이티브 빌드용 로깅 태그
 #endif
@@ -87,11 +94,19 @@ esp_err_t pwm_driver_init(void) {
  * @param channel 사용할 LEDC 채널
  * @return esp_err_t 채널 설정 결과
  */
-esp_err_t pwm_channel_init(gpio_num_t gpio, ledc_channel_t channel) {
+esp_err_t pwm_channel_init(gpio_num_t gpio, pwm_channel_t channel) {
 #ifndef NATIVE_BUILD
+    // 추상화된 채널을 ESP-IDF LEDC 채널로 변환
+    if (channel >= PWM_CHANNEL_MAX) {
+        ESP_LOGE(PWM_TAG, "Invalid PWM channel: %d", channel);
+        return ESP_FAIL;
+    }
+    
+    ledc_channel_t ledc_ch = ledc_channel_map[channel];
+    
     ledc_channel_config_t ledc_channel = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
-        .channel = channel,
+        .channel = ledc_ch,
         .timer_sel = LEDC_TIMER_0,      // 전역 초기화된 타이머 사용
         .intr_type = LEDC_INTR_DISABLE, // 인터럽트 비활성화
         .gpio_num = gpio,
@@ -101,7 +116,7 @@ esp_err_t pwm_channel_init(gpio_num_t gpio, ledc_channel_t channel) {
     esp_err_t ret = ledc_channel_config(&ledc_channel);
     if (ret != ESP_OK) {
         ESP_LOGE(PWM_TAG, "Failed to configure LEDC channel %d on GPIO %d: %s", 
-                 channel, gpio, esp_err_to_name(ret));
+                 ledc_ch, gpio, esp_err_to_name(ret));
         return ret;
     }
     
@@ -123,15 +138,24 @@ esp_err_t pwm_channel_init(gpio_num_t gpio, ledc_channel_t channel) {
  * @param duty 듀티 사이클 값 (0-1023, 10비트)
  * @return esp_err_t 듀티 설정 결과
  */
-esp_err_t pwm_set_duty(ledc_channel_t channel, uint32_t duty) {
+esp_err_t pwm_set_duty(pwm_channel_t channel, uint32_t duty) {
 #ifndef NATIVE_BUILD
+    // 채널 유효성 검사
+    if (channel >= PWM_CHANNEL_MAX) {
+        ESP_LOGE(PWM_TAG, "Invalid PWM channel: %d", channel);
+        return ESP_FAIL;
+    }
+    
+    // 추상화된 채널을 ESP-IDF LEDC 채널로 변환
+    ledc_channel_t ledc_ch = ledc_channel_map[channel];
+    
     // 10비트 해상도에서 최대값 확인 (0-1023)
     if (duty > 1023) {
         ESP_LOGW(PWM_TAG, "Duty value %lu exceeds 10-bit maximum (1023), clamping", duty);
         duty = 1023;
     }
     
-    esp_err_t ret = ledc_set_duty(LEDC_LOW_SPEED_MODE, channel, duty);
+    esp_err_t ret = ledc_set_duty(LEDC_LOW_SPEED_MODE, ledc_ch, duty);
     if (ret != ESP_OK) {
         ESP_LOGE(PWM_TAG, "Failed to set duty %lu on channel %d: %s", 
                  duty, channel, esp_err_to_name(ret));
@@ -139,7 +163,7 @@ esp_err_t pwm_set_duty(ledc_channel_t channel, uint32_t duty) {
     }
     
     // 하드웨어에 즉시 적용
-    ret = ledc_update_duty(LEDC_LOW_SPEED_MODE, channel);
+    ret = ledc_update_duty(LEDC_LOW_SPEED_MODE, ledc_ch);
     if (ret != ESP_OK) {
         ESP_LOGE(PWM_TAG, "Failed to update duty on channel %d: %s", 
                  channel, esp_err_to_name(ret));

@@ -12,8 +12,6 @@
 #include "uart_driver.h"
 
 #ifndef NATIVE_BUILD
-
-// ESP-IDF 헤더는 BSW 헤더 뒤에 포함
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -22,7 +20,7 @@
 static const char* UART_TAG = "UART_DRIVER";
 
 // ESP-IDF UART 포트 매핑
-static const int esp_uart_port_map[] = {
+static const uart_port_t esp_uart_port_map[] = {
     UART_NUM_0,
     UART_NUM_1
 };
@@ -33,15 +31,15 @@ static const int esp_uart_port_map[] = {
 /**
  * @brief UART 인터페이스 초기화 구현
  */
-esp_err_t uart_driver_init(bsw_uart_num_t port, uint32_t baudrate, gpio_num_t tx_pin, gpio_num_t rx_pin) {
+esp_err_t uart_driver_init(uart_port_t port, uint32_t baudrate, gpio_num_t tx_pin, gpio_num_t rx_pin) {
 #ifndef NATIVE_BUILD
     // 포트 검증
-    if (port >= BSW_UART_PORT_MAX) {
+    if (port >= UART_PORT_MAX) {
         ESP_LOGE(UART_TAG, "Invalid UART port: %d", port);
         return ESP_ERR_INVALID_ARG;
     }
     
-    int esp_port = esp_uart_port_map[port];
+    uart_port_t esp_port = esp_uart_port_map[port];
     
     // UART 설정 구조체
     uart_config_t uart_config = {
@@ -88,14 +86,14 @@ esp_err_t uart_driver_init(bsw_uart_num_t port, uint32_t baudrate, gpio_num_t tx
 /**
  * @brief UART 데이터 읽기 구현
  */
-int uart_read_data(bsw_uart_num_t port, uint8_t* data, size_t max_len, uint32_t timeout_ms) {
+int uart_read_data(uart_port_t port, uint8_t* data, size_t max_len, uint32_t timeout_ms) {
 #ifndef NATIVE_BUILD
-    if (port >= BSW_UART_PORT_MAX) {
+    if (port >= UART_PORT_MAX) {
         ESP_LOGE(UART_TAG, "Invalid UART port: %d", port);
         return -1;
     }
     
-    int esp_port = esp_uart_port_map[port];
+    uart_port_t esp_port = esp_uart_port_map[port];
     int len = uart_read_bytes(esp_port, data, max_len, timeout_ms / portTICK_PERIOD_MS);
     
     if (len > 0) {
@@ -112,14 +110,14 @@ int uart_read_data(bsw_uart_num_t port, uint8_t* data, size_t max_len, uint32_t 
 /**
  * @brief UART 데이터 쓰기 구현
  */
-int uart_write_data(bsw_uart_num_t port, const uint8_t* data, size_t len) {
+int uart_write_data(uart_port_t port, const uint8_t* data, size_t len) {
 #ifndef NATIVE_BUILD
-    if (port >= BSW_UART_PORT_MAX) {
+    if (port >= UART_PORT_MAX) {
         ESP_LOGE(UART_TAG, "Invalid UART port: %d", port);
         return -1;
     }
     
-    int esp_port = esp_uart_port_map[port];
+    uart_port_t esp_port = esp_uart_port_map[port];
     int written = uart_write_bytes(esp_port, (const char*)data, len);
     
     if (written > 0) {

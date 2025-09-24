@@ -20,12 +20,14 @@
 #ifndef IMU_SENSOR_H
 #define IMU_SENSOR_H
 
+#include "../bsw/i2c_driver.h"
+
 #ifndef NATIVE_BUILD
-#include "driver/i2c.h"
+#include "hal/i2c_types.h"
+#include "driver/gpio.h"
 #include "esp_err.h"
 #else
 typedef int esp_err_t;
-typedef int i2c_port_t;
 typedef int gpio_num_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
@@ -69,7 +71,7 @@ typedef struct {
  * IMU 센서의 I2C 포트 정보와 측정 데이터를 관리합니다.
  */
 typedef struct {
-    i2c_port_t i2c_port; ///< I2C 포트 번호
+    bsw_i2c_port_t i2c_port; ///< I2C 포트 번호
     imu_data_t data;      ///< 센서 측정 데이터
 } imu_sensor_t;
 
@@ -101,7 +103,7 @@ typedef struct {
  *         - ESP_OK: 초기화 성공
  *         - ESP_FAIL: 초기화 실패 (통신 오류 또는 디바이스 미검출)
  */
-esp_err_t imu_sensor_init(imu_sensor_t* sensor, i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin);
+esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin);
 
 /**
  * @brief IMU 센서 데이터 업데이트

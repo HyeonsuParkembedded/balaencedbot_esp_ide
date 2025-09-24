@@ -11,7 +11,6 @@
  */
 
 #include "gps_sensor.h"
-#include "../bsw/uart_driver.h"
 #ifndef NATIVE_BUILD
 #include "esp_log.h"
 #endif
@@ -81,7 +80,7 @@ static bool parse_gprmc(gps_sensor_t* gps, const char* sentence);
  * @param baudrate UART 통신 속도 (일반적으로 9600)
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
-esp_err_t gps_sensor_init(gps_sensor_t* gps, uart_port_t port, gpio_num_t tx_pin, gpio_num_t rx_pin, int baudrate) {
+esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t port, gpio_num_t tx_pin, gpio_num_t rx_pin, int baudrate) {
     gps->uart_port = port;
     gps->data.latitude = 0.0;
     gps->data.longitude = 0.0;

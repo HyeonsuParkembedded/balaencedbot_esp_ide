@@ -14,13 +14,15 @@
 #define SERVO_STANDUP_H
 
 #ifndef NATIVE_BUILD
-#include "driver/ledc.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_err.h"
 #endif
 #include <stdbool.h>
+
+// BSW 추상화 계층에서 PWM 타입 import
+#include "../bsw/pwm_driver.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,7 +48,7 @@ typedef enum {
  */
 typedef struct {
     gpio_num_t servo_pin;         ///< 서보 제어 핀
-    ledc_channel_t servo_channel; ///< PWM 채널
+    pwm_channel_t servo_channel;  ///< PWM 채널
     int extended_angle;           ///< 확장 시 서보 각도 (도)
     int retracted_angle;          ///< 격납 시 서보 각도 (도)
     int current_angle;            ///< 현재 서보 각도 (도)
@@ -73,7 +75,7 @@ typedef struct {
  * @retval ESP_OK 성공
  * @retval ESP_FAIL 실패
  */
-esp_err_t servo_standup_init(servo_standup_t* servo, gpio_num_t pin, ledc_channel_t channel, int extend_angle, int retract_angle);
+esp_err_t servo_standup_init(servo_standup_t* servo, gpio_num_t pin, pwm_channel_t channel, int extend_angle, int retract_angle);
 
 /**
  * @brief 기립 동작 요청

@@ -57,7 +57,7 @@ static const char* IMU_TAG = "IMU_SENSOR"; ///< ESP-IDF 로깅 태그
  * @param scl_pin I2C SCL 핀 번호
  * @return ESP_OK 성공, ESP_FAIL 센서 연결 실패 또는 I2C 오류
  */
-esp_err_t imu_sensor_init(imu_sensor_t* sensor, i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin) {
+esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin) {
     sensor->i2c_port = port;
     sensor->data.accel_x = sensor->data.accel_y = sensor->data.accel_z = 0.0f;
     sensor->data.gyro_x = sensor->data.gyro_y = sensor->data.gyro_z = 0.0f;

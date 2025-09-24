@@ -21,16 +21,27 @@
 #define PWM_DRIVER_H
 
 #ifndef NATIVE_BUILD
-#include "driver/ledc.h"
-#include "driver/gpio.h"
 #include "esp_err.h"
+#include "driver/gpio.h"
 #else
 typedef int esp_err_t;
-typedef int ledc_channel_t;
 typedef int gpio_num_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
 #endif
+
+// BSW 추상화 계층 - PWM 채널 타입 정의
+typedef enum {
+    PWM_CHANNEL_0 = 0,
+    PWM_CHANNEL_1,
+    PWM_CHANNEL_2, 
+    PWM_CHANNEL_3,
+    PWM_CHANNEL_4,
+    PWM_CHANNEL_5,
+    PWM_CHANNEL_6,
+    PWM_CHANNEL_7,
+    PWM_CHANNEL_MAX
+} pwm_channel_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,10 +77,10 @@ esp_err_t pwm_driver_init(void);
 /**
  * @brief PWM 채널 초기화
  * 
- * 지정된 GPIO 핀과 LEDC 채널을 연결하여 PWM 출력을 설정합니다.
+ * 지정된 GPIO 핀과 PWM 채널을 연결하여 PWM 출력을 설정합니다.
  * 
  * @param gpio PWM 출력할 GPIO 핀 번호
- * @param channel 사용할 LEDC 채널 번호 (LEDC_CHANNEL_0 ~ LEDC_CHANNEL_7)
+ * @param channel 사용할 PWM 채널 번호 (PWM_CHANNEL_0 ~ PWM_CHANNEL_7)
  * @return esp_err_t 
  *         - ESP_OK: 채널 설정 성공
  *         - ESP_FAIL: 채널 설정 실패
@@ -77,7 +88,7 @@ esp_err_t pwm_driver_init(void);
  * @note pwm_driver_init() 호출 후 사용해야 합니다.
  * @warning 이미 사용 중인 채널을 중복 설정하면 오류가 발생할 수 있습니다.
  */
-esp_err_t pwm_channel_init(gpio_num_t gpio, ledc_channel_t channel);
+esp_err_t pwm_channel_init(gpio_num_t gpio, pwm_channel_t channel);
 
 /**
  * @brief PWM 듀티 사이클 설정
@@ -85,7 +96,7 @@ esp_err_t pwm_channel_init(gpio_num_t gpio, ledc_channel_t channel);
  * 지정된 채널의 PWM 듀티 사이클을 설정합니다.
  * 10비트 해상도로 정밀한 제어가 가능합니다.
  * 
- * @param channel 제어할 LEDC 채널 번호
+ * @param channel 제어할 PWM 채널 번호
  * @param duty 듀티 사이클 값 (0 ~ 1023, 10비트 해상도)
  *             - 0: 0% 듀티 (항상 LOW)
  *             - 512: 50% 듀티
@@ -97,7 +108,7 @@ esp_err_t pwm_channel_init(gpio_num_t gpio, ledc_channel_t channel);
  * @note 변경된 듀티는 즉시 적용됩니다.
  * @warning duty 값이 1023을 초과하면 1023으로 제한됩니다.
  */
-esp_err_t pwm_set_duty(ledc_channel_t channel, uint32_t duty);
+esp_err_t pwm_set_duty(pwm_channel_t channel, uint32_t duty);
 
 /** @} */ // PWM_DRIVER
 

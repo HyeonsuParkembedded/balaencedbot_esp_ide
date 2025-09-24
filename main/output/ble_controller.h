@@ -2,7 +2,7 @@
  * @file ble_controller.h
  * @brief BLE (Bluetooth Low Energy) 컨트롤러 인터페이스
  * 
- * 이 모듈은 ESP32의 BLE 기능을 사용하여 외부 기기(모바일 앱)와의
+ * 이 모듈은 BSW BLE 드라이버를 통해 외부 기기(모바일 앱)와의
  * 무선 통신을 제공합니다. 원격 제어 명령 수신 및 로봇 상태 전송을 담당합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
@@ -13,12 +13,10 @@
 #ifndef BLE_CONTROLLER_H
 #define BLE_CONTROLLER_H
 
+#include "../bsw/ble_driver.h"
+#include <stdbool.h>
+
 #ifndef NATIVE_BUILD
-#include "esp_bt.h"
-#include "esp_gap_ble_api.h"
-#include "esp_gatts_api.h"
-#include "esp_bt_main.h"
-#include "esp_gatt_common_api.h"
 #include "esp_err.h"
 #else
 // Native build - types defined in test file
@@ -26,7 +24,6 @@ typedef int esp_err_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
 #endif
-#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,10 +60,10 @@ typedef struct {
     bool device_connected;           ///< 기기 연결 상태
     remote_command_t current_command; ///< 현재 수신된 명령
     char last_command[64];           ///< 마지막 수신 명령 문자열
-    uint16_t gatts_if;              ///< GATT 서버 인터페이스
-    uint16_t conn_id;               ///< 연결 ID
-    uint16_t command_handle;        ///< 명령 특성 핸들
-    uint16_t status_handle;         ///< 상태 특성 핸들
+    ble_conn_handle_t conn_handle;   ///< BSW BLE 연결 핸들
+    ble_service_handle_t service_handle; ///< BSW BLE 서비스 핸들
+    ble_char_handle_t command_char_handle; ///< 명령 특성 핸들
+    ble_char_handle_t status_char_handle;  ///< 상태 특성 핸들
 } ble_controller_t;
 
 /**

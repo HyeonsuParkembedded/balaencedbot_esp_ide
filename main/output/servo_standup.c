@@ -13,6 +13,7 @@
 #include "servo_standup.h"
 #include "../bsw/pwm_driver.h"
 #ifndef NATIVE_BUILD
+#include "driver/ledc.h"
 #include "esp_log.h"
 #endif
 
@@ -57,7 +58,7 @@ static void servo_set_angle(servo_standup_t* servo, int angle) {
     
     // 펄스 폭 계산 및 듀티 사이클 변환
     uint32_t pulse_width = servo_per_degree_init(angle);
-    uint32_t duty = (pulse_width * ((1 << LEDC_TIMER_14_BIT) - 1)) / (1000000 / SERVO_FREQ);
+    uint32_t duty = (pulse_width * ((1 << 14) - 1)) / (1000000 / SERVO_FREQ);
     
     // PWM 듀티 설정 및 업데이트
     ledc_set_duty(LEDC_LOW_SPEED_MODE, servo->servo_channel, duty);
@@ -79,7 +80,7 @@ static void servo_set_angle(servo_standup_t* servo, int angle) {
  * @param retract_angle 격납 각도
  * @return esp_err_t 초기화 결과
  */
-esp_err_t servo_standup_init(servo_standup_t* servo, gpio_num_t pin, ledc_channel_t channel, int extend_angle, int retract_angle) {
+esp_err_t servo_standup_init(servo_standup_t* servo, gpio_num_t pin, pwm_channel_t channel, int extend_angle, int retract_angle) {
     // 구조체 멤버 초기화
     servo->servo_pin = pin;
     servo->servo_channel = channel;
@@ -98,7 +99,7 @@ esp_err_t servo_standup_init(servo_standup_t* servo, gpio_num_t pin, ledc_channe
     ledc_timer_config_t ledc_timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .timer_num = LEDC_TIMER_1,
-        .duty_resolution = LEDC_TIMER_14_BIT,
+        .duty_resolution = 14,  // 14-bit resolution
         .freq_hz = SERVO_FREQ,
         .clk_cfg = LEDC_AUTO_CLK
     };

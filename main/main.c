@@ -33,6 +33,7 @@
 #include "nvs_flash.h"
 
 #include "config.h"
+#include "bsw/i2c_driver.h"
 
 #include "input/imu_sensor.h"
 #include "logic/kalman_filter.h"
@@ -332,7 +333,7 @@ void app_main(void) {
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
 static esp_err_t init_imu_wrapper(void) {
-    return imu_sensor_init(&imu, CONFIG_MPU6050_I2C_PORT, CONFIG_MPU6050_SDA_PIN, CONFIG_MPU6050_SCL_PIN);
+    return imu_sensor_init(&imu, BSW_I2C_PORT_0, CONFIG_MPU6050_SDA_PIN, CONFIG_MPU6050_SCL_PIN);
 }
 
 /**

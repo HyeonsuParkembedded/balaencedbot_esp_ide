@@ -21,12 +21,18 @@
 #include "config.h"
 #ifndef NATIVE_BUILD
 #include "driver/i2c_master.h"
+#include "hal/i2c_types.h"
 #include "esp_log.h"
 #endif
 
 #ifndef NATIVE_BUILD
 static const char* I2C_TAG = "I2C_DRIVER";
 static i2c_master_bus_handle_t bus_handle = NULL;
+
+// ESP-IDF I2C 포트 매핑
+static const i2c_port_t esp_i2c_port_map[] = {
+    I2C_NUM_0  // ESP32-C6는 I2C_NUM_0만 지원
+};
 #else
 #define I2C_TAG "I2C_DRIVER"
 #endif
@@ -47,12 +53,18 @@ static i2c_master_bus_handle_t bus_handle = NULL;
  * @param scl_pin SCL 핀 번호
  * @return esp_err_t 초기화 결과
  */
-esp_err_t i2c_driver_init(i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin) {
+esp_err_t i2c_driver_init(bsw_i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin) {
 #ifndef NATIVE_BUILD
     // 새로운 I2C 마스터 버스 구성
+    // BSW 포트를 ESP-IDF 포트로 매핑
+    if (port >= BSW_I2C_PORT_MAX) {
+        ESP_LOGE(I2C_TAG, "Invalid I2C port: %d", port);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
     i2c_master_bus_config_t i2c_mst_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,        // ESP32-C6 기본 클록 소스
-        .i2c_port = port,                         // I2C 포트 번호
+        .i2c_port = esp_i2c_port_map[port],       // ESP-IDF I2C 포트 번호
         .scl_io_num = scl_pin,                    // SCL 핀
         .sda_io_num = sda_pin,                    // SDA 핀
         .glitch_ignore_cnt = 7,                   // 표준 글리치 필터
@@ -88,7 +100,7 @@ esp_err_t i2c_driver_init(i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pi
  * @param value 쓸 데이터 값
  * @return esp_err_t 전송 결과
  */
-esp_err_t i2c_write_register(i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t value) {
+esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t value) {
 #ifndef NATIVE_BUILD
     if (bus_handle == NULL) {
         ESP_LOGE(I2C_TAG, "I2C bus not initialized");
@@ -146,7 +158,7 @@ esp_err_t i2c_write_register(i2c_port_t port, uint8_t device_addr, uint8_t reg_a
  * @param len 읽을 데이터 길이
  * @return esp_err_t 전송 결과
  */
-esp_err_t i2c_read_register(i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t* data, size_t len) {
+esp_err_t i2c_read_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t* data, size_t len) {
 #ifndef NATIVE_BUILD
     if (bus_handle == NULL) {
         ESP_LOGE(I2C_TAG, "I2C bus not initialized");

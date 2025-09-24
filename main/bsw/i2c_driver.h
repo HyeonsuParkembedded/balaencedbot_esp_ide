@@ -21,18 +21,23 @@
 #define I2C_DRIVER_H
 
 #ifndef NATIVE_BUILD
-#include "driver/i2c_types.h"  // 새로운 I2C 타입 정의
 #include "driver/gpio.h"       // GPIO 타입 정의 (gpio_num_t)
 #include "esp_err.h"
 #else
 typedef int esp_err_t;
-typedef int i2c_port_t;
 typedef int gpio_num_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
 #endif
 
 #include <stdint.h>
+
+// BSW 추상화 계층 - I2C 포트 타입 정의
+typedef enum {
+    BSW_I2C_PORT_0 = 0,
+    BSW_I2C_PORT_1,
+    BSW_I2C_PORT_MAX
+} bsw_i2c_port_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,7 +65,7 @@ extern "C" {
  * @note 사용 전에 반드시 호출해야 합니다.
  * @note 새로운 API는 버스/디바이스 아키텍처를 사용합니다.
  */
-esp_err_t i2c_driver_init(i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin);
+esp_err_t i2c_driver_init(bsw_i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pin);
 
 /**
  * @brief I2C 디바이스 레지스터에 데이터 쓰기 (새로운 API)
@@ -78,7 +83,7 @@ esp_err_t i2c_driver_init(i2c_port_t port, gpio_num_t sda_pin, gpio_num_t scl_pi
  * 
  * @note 무제한 타임아웃(-1)으로 설정됩니다.
  */
-esp_err_t i2c_write_register(i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t value);
+esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t value);
 
 /**
  * @brief I2C 디바이스 레지스터에서 데이터 읽기 (새로운 API)
@@ -98,7 +103,7 @@ esp_err_t i2c_write_register(i2c_port_t port, uint8_t device_addr, uint8_t reg_a
  * @note 무제한 타임아웃(-1)으로 설정됩니다.
  * @warning data 버퍼는 len 바이트 이상의 크기를 가져야 합니다.
  */
-esp_err_t i2c_read_register(i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t* data, size_t len);
+esp_err_t i2c_read_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t* data, size_t len);
 
 /**
  * @brief I2C 드라이버 해제

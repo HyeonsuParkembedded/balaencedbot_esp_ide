@@ -37,7 +37,7 @@ static const char* MOTOR_TAG = "MOTOR_CONTROL";  ///< 로깅 태그
  */
 esp_err_t motor_control_init(motor_control_t* motor,
                             gpio_num_t pin_a, gpio_num_t pin_b,
-                            gpio_num_t enable_pin, ledc_channel_t enable_ch) {
+                            gpio_num_t enable_pin, pwm_channel_t enable_ch) {
     // 구조체 멤버 초기화
     motor->motor_pin_a = pin_a;
     motor->motor_pin_b = pin_b;

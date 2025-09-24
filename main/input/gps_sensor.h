@@ -20,13 +20,14 @@
 #ifndef GPS_SENSOR_H
 #define GPS_SENSOR_H
 
+#include "../bsw/uart_driver.h"
+
 #ifndef NATIVE_BUILD
-#include "driver/uart.h"
+#include "hal/uart_types.h"
 #include "driver/gpio.h"
 #include "esp_err.h"
 #else
 typedef int esp_err_t;
-typedef int uart_port_t;
 typedef int gpio_num_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
@@ -66,7 +67,7 @@ typedef struct {
  * GPS 모듈의 UART 포트 정보와 위치 데이터를 관리합니다.
  */
 typedef struct {
-    uart_port_t uart_port; ///< UART 포트 번호
+    bsw_uart_num_t uart_port; ///< UART 포트 번호
     gps_data_t data;       ///< GPS 위치 데이터
 } gps_sensor_t;
 
@@ -92,7 +93,7 @@ typedef struct {
  *         - ESP_OK: 초기화 성공
  *         - ESP_FAIL: 초기화 실패
  */
-esp_err_t gps_sensor_init(gps_sensor_t* gps, uart_port_t port, gpio_num_t tx_pin, gpio_num_t rx_pin, int baudrate);
+esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t port, gpio_num_t tx_pin, gpio_num_t rx_pin, int baudrate);
 
 /**
  * @brief GPS 데이터 업데이트

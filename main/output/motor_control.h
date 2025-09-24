@@ -15,19 +15,18 @@
 
 #ifndef NATIVE_BUILD
 #include "driver/gpio.h"
-#include "driver/ledc.h"
 #include "esp_err.h"
 #else
 typedef int esp_err_t;
 #ifndef GPIO_NUM_T_DEFINED
 typedef int gpio_num_t;
 #endif
-#ifndef LEDC_CHANNEL_T_DEFINED
-typedef int ledc_channel_t;
-#endif
 #define ESP_OK 0
 #define ESP_FAIL -1
 #endif
+
+// BSW 추상화 계층에서 PWM 타입 import
+#include "../bsw/pwm_driver.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,7 +41,7 @@ typedef struct {
     gpio_num_t motor_pin_a;      ///< 모터 제어 핀 A (방향 제어)
     gpio_num_t motor_pin_b;      ///< 모터 제어 핀 B (방향 제어)
     gpio_num_t enable_pin;       ///< PWM Enable 핀 (속도 제어)
-    ledc_channel_t enable_channel; ///< PWM 채널
+    pwm_channel_t enable_channel; ///< PWM 채널
 } motor_control_t;
 
 /**
@@ -62,7 +61,7 @@ typedef struct {
  */
 esp_err_t motor_control_init(motor_control_t* motor,
                             gpio_num_t pin_a, gpio_num_t pin_b,
-                            gpio_num_t enable_pin, ledc_channel_t enable_ch);
+                            gpio_num_t enable_pin, pwm_channel_t enable_ch);
 
 /**
  * @brief 모터 속도 설정

@@ -19,19 +19,25 @@
 #ifndef UART_DRIVER_H
 #define UART_DRIVER_H
 
+#include <stdint.h>
+
 #ifndef NATIVE_BUILD
-#include "driver/uart.h"
-#include "driver/gpio.h"
 #include "esp_err.h"
+#include "driver/gpio.h"
 #else
 typedef int esp_err_t;
-typedef int uart_port_t;
 typedef int gpio_num_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
 #endif
 
-#include <stdint.h>
+// BSW 추상화 계층 - UART 포트 타입 정의
+typedef enum {
+    BSW_UART_PORT_0 = 0,
+    BSW_UART_PORT_1,
+    BSW_UART_PORT_2,
+    BSW_UART_PORT_MAX
+} bsw_uart_num_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,7 +72,7 @@ extern "C" {
  * 
  * @note GPS 모듈은 일반적으로 9600bps를 사용합니다.
  */
-esp_err_t uart_driver_init(uart_port_t port, gpio_num_t tx_pin, gpio_num_t rx_pin, int baudrate);
+esp_err_t uart_driver_init(bsw_uart_num_t port, uint32_t baudrate, gpio_num_t tx_pin, gpio_num_t rx_pin);
 
 /**
  * @brief UART에서 데이터 읽기
@@ -85,7 +91,7 @@ esp_err_t uart_driver_init(uart_port_t port, gpio_num_t tx_pin, gpio_num_t rx_pi
  * 
  * @warning data 버퍼는 max_len 바이트 이상의 크기를 가져야 합니다.
  */
-int uart_read_data(uart_port_t port, uint8_t* data, size_t max_len, uint32_t timeout_ms);
+int uart_read_data(bsw_uart_num_t port, uint8_t* data, size_t max_len, uint32_t timeout_ms);
 
 /**
  * @brief UART로 데이터 전송
@@ -102,7 +108,7 @@ int uart_read_data(uart_port_t port, uint8_t* data, size_t max_len, uint32_t tim
  * 
  * @note 전송 타임아웃은 내부적으로 관리됩니다.
  */
-esp_err_t uart_write_data(uart_port_t port, const uint8_t* data, size_t len);
+int uart_write_data(bsw_uart_num_t port, const uint8_t* data, size_t len);
 
 /** @} */ // UART_DRIVER
 

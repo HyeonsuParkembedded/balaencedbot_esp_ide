@@ -6,8 +6,8 @@
  * 시스템 안정성 관련 기능을 구현합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-09-24
- * @version 1.0
+ * @date 2025-09-20
+ * @version .0
  */
 
 #include "error_recovery.h"
