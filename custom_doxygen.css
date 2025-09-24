@@ -1,0 +1,79 @@
+/* BalanceBot 문서화를 위한 커스텀 CSS */
+
+/* 로고 및 이미지 크기 제한 */
+.logo {
+    max-width: 100px !important;
+    max-height: 80px !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+/* 일반 이미지 크기 제한 */
+img {
+    max-width: 100% !important;
+    height: auto !important;
+}
+
+/* 다이어그램 이미지 크기 조정 */
+.doxygraph img {
+    max-width: 800px !important;
+    height: auto !important;
+}
+
+/* 헤더 영역 최적화 */
+#top {
+    padding: 10px !important;
+}
+
+/* 제목 영역 간격 조정 */
+.header {
+    padding: 5px 10px !important;
+}
+
+/* 네비게이션 메뉴 개선 */
+.tabs, .tabs2, .tabs3 {
+    font-size: 13px !important;
+}
+
+/* 콘텐츠 영역 여백 조정 */
+.contents {
+    margin-top: 10px !important;
+}
+
+/* 테이블 스타일 개선 */
+table.doxtable {
+    font-size: 12px !important;
+}
+
+/* 코드 블록 최적화 */
+div.fragment {
+    font-size: 12px !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+}
+
+/* 검색 박스 크기 조정 */
+#MSearchBox {
+    width: 150px !important;
+}
+
+/* 사이드바 너비 조정 */
+#nav-tree {
+    width: 200px !important;
+}
+
+/* 반응형 디자인 개선 */
+@media screen and (max-width: 768px) {
+    .logo {
+        max-width: 60px !important;
+        max-height: 50px !important;
+    }
+    
+    .doxygraph img {
+        max-width: 100% !important;
+    }
+    
+    #nav-tree {
+        width: 100% !important;
+    }
+}
