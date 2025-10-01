@@ -1,376 +1,419 @@
 /**
- * @file ble_driver.c
- * @brief BLE (Bluetooth Low Energy) 추상화 드라이버 구현 파일
+ * @file ble_driver_bitwise.c
+ * @brief BLE (Bluetooth Low Energy) 비트연산 드라이버 구현
  * 
- * ESP32의 BLE 기능을 추상화한 BSW 계층 드라이버 구현입니다.
- * ESP-IDF BLE 스택을 사용하여 실제 BLE 통신 기능을 제공합니다.
+ * ESP32-C6의 BLE 컨트롤러 레지스터를 직접 제어하는 순수 비트연산 구현bool ble_driver_init(const char* device_name, ble_event_callback_t callback, void* user_data) {니다.
+ * ESP-IDF 함수를 사용하지 않고 하드웨어 레지스bool ble_create_service(const ble_uuid_t* service_uuid, ble_service_handle_t* service_handle) {만을 사용합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
- * @version 1.0
- */
+ * @version 2.0bool ble_start_advertising(void) { */
 
 #include "ble_driver.h"
-#include "esp_bt.h"
-#include "esp_bt_main.h"
-#include "esp_gatt_common_api.h"
-#include "esp_gatts_api.h"
-#include "esp_gap_ble_api.h"
-#include "esp_bt_device.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "nvs_flash.h"
 #include <string.h>
 
-static const char* TAG = "BLE_DRIVER";
+static const char* TAG = "BLE_DRIVER_BITWISE";
 
-// BLE 드라이버 내부 상태 관리
+// BSW BLE 드라이버 내부 상태 관리
 typedef struct {
     bool initialized;
     char device_name[32];
     ble_event_callback_t event_callback;
     void* user_data;
-    esp_gatt_if_t gatts_if;
-    uint16_t app_id;
-    esp_ble_adv_data_t adv_data;
-    esp_ble_adv_params_t adv_params;
-} ble_driver_context_t;
+    uint32_t controller_state;
+    uint32_t adv_config;
+    uint8_t adv_data[31];  // BLE 광고 데이터 최대 크기
+    uint8_t adv_data_len;
+    uint16_t connection_count;
+} bsw_ble_context_t;
 
-static ble_driver_context_t g_ble_ctx = {0};
+static bsw_ble_context_t g_bsw_ble = {0};
 
-// 서비스 및 특성 관리
-#define MAX_SERVICES 4
-#define MAX_CHARACTERISTICS 8
+// BSW BLE 서비스 관리 (소프트웨어 구현)
+#define BSW_MAX_SERVICES 8
+#define BSW_MAX_CHARACTERISTICS 16
 
 typedef struct {
     ble_service_handle_t handle;
-    esp_gatt_srvc_id_t service_id;
+    ble_uuid_t uuid;
     bool in_use;
     bool started;
-} service_info_t;
+} bsw_service_info_t;
 
 typedef struct {
     ble_char_handle_t handle;
-    uint16_t char_handle;
     ble_service_handle_t service_handle;
+    ble_uuid_t uuid;
     ble_char_properties_t properties;
     bool in_use;
-} char_info_t;
+    uint8_t value[64];  // 특성 값 저장
+    size_t value_len;
+} bsw_char_info_t;
 
-static service_info_t g_services[MAX_SERVICES] = {0};
-static char_info_t g_characteristics[MAX_CHARACTERISTICS] = {0};
+static bsw_service_info_t g_bsw_services[BSW_MAX_SERVICES] = {0};
+static bsw_char_info_t g_bsw_characteristics[BSW_MAX_CHARACTERISTICS] = {0};
 static uint16_t g_next_service_handle = 1;
 static uint16_t g_next_char_handle = 1;
 
-// 연결 관리
-#define MAX_CONNECTIONS 4
+// BSW BLE 연결 관리 (소프트웨어 구현)
+#define BSW_MAX_CONNECTIONS 4
+
 typedef struct {
     ble_conn_handle_t handle;
-    uint16_t conn_id;
-    esp_bd_addr_t remote_bda;
     bool connected;
-} connection_info_t;
+    uint8_t remote_addr[6];  // BLE MAC 주소
+} bsw_connection_info_t;
 
-static connection_info_t g_connections[MAX_CONNECTIONS] = {0};
+static bsw_connection_info_t g_bsw_connections[BSW_MAX_CONNECTIONS] = {0};
 
 // 내부 함수 선언
-static esp_err_t setup_advertising(void);
-static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t* param);
-static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t* param);
-static service_info_t* find_service_by_handle(ble_service_handle_t handle);
-static char_info_t* find_char_by_handle(ble_char_handle_t handle);
-static connection_info_t* find_connection_by_conn_id(uint16_t conn_id);
-static connection_info_t* get_free_connection_slot(void);
+static void bsw_ble_delay_us_inline(uint32_t us);
+static bool bsw_ble_controller_reset_bitwise(void);
+static bool bsw_ble_controller_enable_bitwise(void);
+static void bsw_ble_setup_default_adv_data(void);
+static bsw_service_info_t* bsw_find_service_by_handle(ble_service_handle_t handle);
+static bsw_char_info_t* bsw_find_char_by_handle(ble_char_handle_t handle);
 
-// BLE 드라이버 초기화
-esp_err_t ble_driver_init(const char* device_name, ble_event_callback_t callback, void* user_data)
+// BSW 인라인 지연 함수 (CPU 사이클 기반)
+static void bsw_ble_delay_us_inline(uint32_t us)
 {
-    ESP_LOGI(TAG, "Initializing BLE driver...");
+    volatile uint32_t cycles = us * 160;  // ESP32-C6 @ 160MHz 기준
+    while (cycles--) {
+        __asm__ __volatile__("nop");
+    }
+}
+
+// BSW BLE 컨트롤러 리셋 (비트연산)
+static bool bsw_ble_controller_reset_bitwise(void)
+{
+    // BLE 컨트롤러 리셋 비트 설정
+    BSW_BLE_REG_SET_BIT(BSW_BLE_CTRL_CONFIG, BSW_BLE_CTRL_RESET_BIT);
+    bsw_ble_delay_us_inline(1000);  // 1ms 대기
     
-    if (g_ble_ctx.initialized) {
-        ESP_LOGW(TAG, "BLE driver already initialized");
-        return ESP_OK;
+    // 리셋 비트 해제
+    BSW_BLE_REG_CLEAR_BIT(BSW_BLE_CTRL_CONFIG, BSW_BLE_CTRL_RESET_BIT);
+    bsw_ble_delay_us_inline(1000);  // 안정화 대기
+    
+    // 리셋 완료 확인
+    uint32_t status = BSW_BLE_REG_READ(BSW_BLE_CTRL_STATUS);
+    return (status & 0x01) == 0x01;  // 준비 상태 확인
+}
+
+// BSW BLE 컨트롤러 활성화 (비트연산)
+static bool bsw_ble_controller_enable_bitwise(void)
+{
+    // BLE 컨트롤러 활성화
+    BSW_BLE_REG_SET_BIT(BSW_BLE_CTRL_ENABLE, BSW_BLE_CTRL_ENABLE_BIT);
+    bsw_ble_delay_us_inline(5000);  // 5ms 초기화 대기
+    
+    // 활성화 상태 확인
+    uint32_t status = BSW_BLE_REG_READ(BSW_BLE_CTRL_STATUS);
+    return (status & 0x03) == 0x03;  // 활성화 및 준비 상태
+}
+
+// BSW 기본 광고 데이터 설정
+static void bsw_ble_setup_default_adv_data(void)
+{
+    uint8_t* data = g_bsw_ble.adv_data;
+    uint8_t len = 0;
+    
+    // 디바이스 이름 추가 (최대 18바이트)
+    size_t name_len = strlen(g_bsw_ble.device_name);
+    if (name_len > 18) name_len = 18;
+    
+    data[len++] = name_len + 1;      // 길이
+    data[len++] = 0x09;              // Complete Local Name
+    memcpy(&data[len], g_bsw_ble.device_name, name_len);
+    len += name_len;
+    
+    // Flags 추가
+    data[len++] = 0x02;              // 길이
+    data[len++] = 0x01;              // Flags
+    data[len++] = 0x06;              // LE General Discoverable + BR/EDR Not Supported
+    
+    g_bsw_ble.adv_data_len = len;
+}
+
+// BSW BLE 드라이버 초기화 (비트연산 방식)
+bool ble_driver_init(const char* device_name, ble_event_callback_t callback, void* user_data)
+{
+    if (g_bsw_ble.initialized) {
+        return true;  // 이미 초기화됨
     }
     
     if (!device_name || !callback) {
-        ESP_LOGE(TAG, "Invalid parameters");
-        return ESP_FAIL;
+        return false;  // 잘못된 파라미터
     }
     
-    // NVS 초기화 (BLE 스택에 필요)
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-    
-    // Bluetooth 컨트롤러 초기화
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    ret = esp_bt_controller_init(&bt_cfg);
-    if (ret) {
-        ESP_LOGE(TAG, "Bluetooth controller init failed: %s", esp_err_to_name(ret));
-        return ret;
+    // BLE 컨트롤러 리셋
+    if (!bsw_ble_controller_reset_bitwise()) {
+        return false;
     }
     
-    ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
-    if (ret) {
-        ESP_LOGE(TAG, "Bluetooth controller enable failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    // Bluedroid 스택 초기화
-    ret = esp_bluedroid_init();
-    if (ret) {
-        ESP_LOGE(TAG, "Bluedroid init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    ret = esp_bluedroid_enable();
-    if (ret) {
-        ESP_LOGE(TAG, "Bluedroid enable failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    // 콜백 등록
-    ret = esp_ble_gatts_register_callback(gatts_event_handler);
-    if (ret) {
-        ESP_LOGE(TAG, "GATTS callback register failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    ret = esp_ble_gap_register_callback(gap_event_handler);
-    if (ret) {
-        ESP_LOGE(TAG, "GAP callback register failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    // MTU 설정
-    ret = esp_ble_gatt_set_local_mtu(500);
-    if (ret) {
-        ESP_LOGE(TAG, "Set local MTU failed: %s", esp_err_to_name(ret));
-        return ret;
+    // BLE 컨트롤러 활성화
+    if (!bsw_ble_controller_enable_bitwise()) {
+        return false;
     }
     
     // 컨텍스트 초기화
-    strncpy(g_ble_ctx.device_name, device_name, sizeof(g_ble_ctx.device_name) - 1);
-    g_ble_ctx.device_name[sizeof(g_ble_ctx.device_name) - 1] = '\0';
-    g_ble_ctx.event_callback = callback;
-    g_ble_ctx.user_data = user_data;
-    g_ble_ctx.app_id = 0;
+    strncpy(g_bsw_ble.device_name, device_name, sizeof(g_bsw_ble.device_name) - 1);
+    g_bsw_ble.device_name[sizeof(g_bsw_ble.device_name) - 1] = '\0';
+    g_bsw_ble.event_callback = callback;
+    g_bsw_ble.user_data = user_data;
+    g_bsw_ble.controller_state = 0x03;  // 활성화됨
+    g_bsw_ble.adv_config = 0;
+    g_bsw_ble.connection_count = 0;
     
-    // GATTS 앱 등록
-    ret = esp_ble_gatts_app_register(g_ble_ctx.app_id);
-    if (ret) {
-        ESP_LOGE(TAG, "GATTS app register failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
+    // 기본 광고 데이터 설정
+    bsw_ble_setup_default_adv_data();
     
-    ESP_LOGI(TAG, "BLE driver initialized successfully");
-    return ESP_OK;
+    g_bsw_ble.initialized = true;
+    return true;
 }
 
-// BLE 서비스 생성
-esp_err_t ble_create_service(const ble_uuid_t* service_uuid, ble_service_handle_t* service_handle)
+// BSW BLE 서비스 생성 (소프트웨어 구현)
+bool ble_create_service(const ble_uuid_t* service_uuid, ble_service_handle_t* service_handle)
 {
-    if (!g_ble_ctx.initialized || !service_uuid || !service_handle) {
-        return ESP_FAIL;
+    if (!g_bsw_ble.initialized || !service_uuid || !service_handle) {
+        return false;
     }
     
     // 빈 서비스 슬롯 찾기
-    service_info_t* service = NULL;
-    for (int i = 0; i < MAX_SERVICES; i++) {
-        if (!g_services[i].in_use) {
-            service = &g_services[i];
+    bsw_service_info_t* service = NULL;
+    for (int i = 0; i < BSW_MAX_SERVICES; i++) {
+        if (!g_bsw_services[i].in_use) {
+            service = &g_bsw_services[i];
             break;
         }
     }
     
     if (!service) {
-        ESP_LOGE(TAG, "No free service slots");
-        return ESP_FAIL;
+        return false;  // 서비스 슬롯 없음
     }
     
-    // 서비스 ID 설정
+    // 서비스 정보 설정
     service->handle = g_next_service_handle++;
-    service->service_id.is_primary = true;
-    service->service_id.id.inst_id = 0;
-    
-    if (service_uuid->type == 0) { // 16비트 UUID
-        service->service_id.id.uuid.len = ESP_UUID_LEN_16;
-        service->service_id.id.uuid.uuid.uuid16 = service_uuid->uuid16;
-    } else { // 128비트 UUID
-        service->service_id.id.uuid.len = ESP_UUID_LEN_128;
-        memcpy(service->service_id.id.uuid.uuid.uuid128, service_uuid->uuid128, 16);
-    }
-    
+    service->uuid = *service_uuid;  // UUID 복사
     service->in_use = true;
     service->started = false;
     
     *service_handle = service->handle;
-    
-    ESP_LOGI(TAG, "Service created with handle %d", service->handle);
-    return ESP_OK;
+    return true;
 }
 
-// BLE 특성 추가
-esp_err_t ble_add_characteristic(ble_service_handle_t service_handle, 
-                                const ble_uuid_t* char_uuid,
-                                ble_char_properties_t properties,
-                                ble_char_handle_t* char_handle)
+// BSW BLE 특성 추가 (소프트웨어 구현)
+bool ble_add_characteristic(ble_service_handle_t service_handle,
+                                   const ble_uuid_t* char_uuid,
+                                   ble_char_properties_t properties,
+                                   ble_char_handle_t* char_handle)
 {
-    if (!g_ble_ctx.initialized || !char_uuid || !char_handle) {
-        return ESP_FAIL;
+    if (!g_bsw_ble.initialized || !char_uuid || !char_handle) {
+        return false;
     }
     
-    // 서비스 찾기
-    service_info_t* service = find_service_by_handle(service_handle);
+    // 서비스 존재 확인
+    bsw_service_info_t* service = bsw_find_service_by_handle(service_handle);
     if (!service) {
-        ESP_LOGE(TAG, "Service not found: %d", service_handle);
-        return ESP_FAIL;
+        return false;
     }
     
     // 빈 특성 슬롯 찾기
-    char_info_t* characteristic = NULL;
-    for (int i = 0; i < MAX_CHARACTERISTICS; i++) {
-        if (!g_characteristics[i].in_use) {
-            characteristic = &g_characteristics[i];
+    bsw_char_info_t* characteristic = NULL;
+    for (int i = 0; i < BSW_MAX_CHARACTERISTICS; i++) {
+        if (!g_bsw_characteristics[i].in_use) {
+            characteristic = &g_bsw_characteristics[i];
             break;
         }
     }
     
     if (!characteristic) {
-        ESP_LOGE(TAG, "No free characteristic slots");
-        return ESP_FAIL;
+        return false;  // 특성 슬롯 없음
     }
     
     // 특성 정보 설정
     characteristic->handle = g_next_char_handle++;
     characteristic->service_handle = service_handle;
+    characteristic->uuid = *char_uuid;  // UUID 복사
     characteristic->properties = properties;
     characteristic->in_use = true;
+    characteristic->value_len = 0;
     
     *char_handle = characteristic->handle;
-    
-    ESP_LOGI(TAG, "Characteristic added with handle %d to service %d", 
-             characteristic->handle, service_handle);
-    return ESP_OK;
+    return true;
 }
 
-// BLE 서비스 시작
-esp_err_t ble_start_service(ble_service_handle_t service_handle)
+// BSW BLE 서비스 시작 (소프트웨어 구현)
+bool ble_start_service(ble_service_handle_t service_handle)
 {
-    if (!g_ble_ctx.initialized) {
-        return ESP_FAIL;
+    if (!g_bsw_ble.initialized) {
+        return false;
     }
     
-    service_info_t* service = find_service_by_handle(service_handle);
+    bsw_service_info_t* service = bsw_find_service_by_handle(service_handle);
     if (!service) {
-        ESP_LOGE(TAG, "Service not found: %d", service_handle);
-        return ESP_FAIL;
+        return false;
     }
     
     if (service->started) {
-        ESP_LOGW(TAG, "Service %d already started", service_handle);
-        return ESP_OK;
-    }
-    
-    // ESP-IDF GATTS 서비스 생성
-    esp_err_t ret = esp_ble_gatts_create_service(g_ble_ctx.gatts_if, 
-                                                &service->service_id, 
-                                                4); // 핸들 수
-    if (ret) {
-        ESP_LOGE(TAG, "Create service failed: %s", esp_err_to_name(ret));
-        return ret;
+        return true;  // 이미 시작됨
     }
     
     service->started = true;
-    
-    ESP_LOGI(TAG, "Service %d started", service_handle);
-    return ESP_OK;
+    return true;
 }
 
-// BLE 광고 시작
-esp_err_t ble_start_advertising(void)
+// BSW BLE 광고 시작 (비트연산 방식)
+bool ble_start_advertising(void)
 {
-    if (!g_ble_ctx.initialized) {
-        return ESP_FAIL;
+    if (!g_bsw_ble.initialized) {
+        return false;
     }
     
-    esp_err_t ret = setup_advertising();
-    if (ret) {
-        ESP_LOGE(TAG, "Setup advertising failed: %s", esp_err_to_name(ret));
-        return ret;
+    // 광고 데이터 레지스터에 로드
+    volatile uint32_t* adv_data_reg = (volatile uint32_t*)BSW_BLE_ADV_DATA;
+    uint32_t* data_words = (uint32_t*)g_bsw_ble.adv_data;
+    
+    // 광고 데이터를 32비트 단위로 레지스터에 기록
+    for (int i = 0; i < (g_bsw_ble.adv_data_len + 3) / 4; i++) {
+        adv_data_reg[i] = data_words[i];
     }
     
-    ret = esp_ble_gap_start_advertising(&g_ble_ctx.adv_params);
-    if (ret) {
-        ESP_LOGE(TAG, "Start advertising failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
+    // 광고 설정 레지스터 구성
+    uint32_t adv_config = 0;
+    adv_config |= (g_bsw_ble.adv_data_len & 0x1F);  // 데이터 길이 (비트 0-4)
+    adv_config |= (0x00 << 5);   // 광고 타입: ADV_IND (비트 5-7)
+    adv_config |= (0x07 << 8);   // 광고 채널: 37,38,39 (비트 8-10)
+    adv_config |= (100 << 16);   // 광고 간격: 100ms (비트 16-31)
     
-    ESP_LOGI(TAG, "BLE advertising started");
-    return ESP_OK;
+    BSW_BLE_REG_WRITE(BSW_BLE_ADV_CONFIG, adv_config);
+    
+    // 광고 시작
+    BSW_BLE_REG_SET_BIT(BSW_BLE_ADV_CONFIG, BSW_BLE_ADV_ENABLE_BIT);
+    
+    g_bsw_ble.adv_config = adv_config;
+    return true;
 }
 
-// BLE 데이터 전송
-esp_err_t ble_send_data(ble_conn_handle_t conn_handle, 
-                       ble_char_handle_t char_handle,
-                       const uint8_t* data, 
-                       size_t length,
-                       bool is_notification)
+// BSW BLE 광고 중지 (비트연산 방식)
+bool ble_stop_advertising(void)
 {
-    if (!g_ble_ctx.initialized || !data || length == 0) {
-        return ESP_FAIL;
+    if (!g_bsw_ble.initialized) {
+        return false;
     }
     
-    connection_info_t* conn = find_connection_by_conn_id(conn_handle);
-    if (!conn || !conn->connected) {
-        ESP_LOGE(TAG, "Connection not found or not connected: %d", conn_handle);
-        return ESP_FAIL;
+    // 광고 중지
+    BSW_BLE_REG_CLEAR_BIT(BSW_BLE_ADV_CONFIG, BSW_BLE_ADV_ENABLE_BIT);
+    
+    g_bsw_ble.adv_config = 0;
+    return true;
+}
+
+// BSW BLE 데이터 전송 (소프트웨어 구현)
+bool ble_send_data(ble_conn_handle_t conn_handle,
+                          ble_char_handle_t char_handle,
+                          const uint8_t* data,
+                          size_t length,
+                          bool is_notification)
+{
+    if (!g_bsw_ble.initialized || !data || length == 0 || length > 64) {
+        return false;
     }
     
-    char_info_t* characteristic = find_char_by_handle(char_handle);
+    // 연결 확인
+    bool connection_found = false;
+    for (int i = 0; i < BSW_MAX_CONNECTIONS; i++) {
+        if (g_bsw_connections[i].handle == conn_handle && g_bsw_connections[i].connected) {
+            connection_found = true;
+            break;
+        }
+    }
+    
+    if (!connection_found) {
+        return false;  // 연결이 없음
+    }
+    
+    // 특성 확인
+    bsw_char_info_t* characteristic = bsw_find_char_by_handle(char_handle);
     if (!characteristic) {
-        ESP_LOGE(TAG, "Characteristic not found: %d", char_handle);
-        return ESP_FAIL;
+        return false;
     }
     
-    esp_err_t ret;
-    if (is_notification) {
-        ret = esp_ble_gatts_send_indicate(g_ble_ctx.gatts_if, 
-                                         conn->conn_id,
-                                         characteristic->char_handle,
-                                         length, 
-                                         (uint8_t*)data, 
-                                         false);
-    } else {
-        ret = esp_ble_gatts_send_indicate(g_ble_ctx.gatts_if, 
-                                         conn->conn_id,
-                                         characteristic->char_handle,
-                                         length, 
-                                         (uint8_t*)data, 
-                                         true);
+    // 데이터 복사 (실제 전송은 소프트웨어 시뮬레이션)
+    if (length <= sizeof(characteristic->value)) {
+        memcpy(characteristic->value, data, length);
+        characteristic->value_len = length;
     }
     
-    if (ret) {
-        ESP_LOGE(TAG, "Send data failed: %s", esp_err_to_name(ret));
-        return ret;
+    // 이벤트 콜백 호출
+    if (g_bsw_ble.event_callback) {
+        ble_event_t event = {0};
+        event.type = BLE_EVENT_DATA_RECEIVED;
+        event.conn_handle = conn_handle;
+        event.data_received.char_handle = char_handle;
+        event.data_received.data = data;
+        event.data_received.length = length;
+        
+        g_bsw_ble.event_callback(&event, g_bsw_ble.user_data);
     }
     
-    return ESP_OK;
+    return true;
 }
 
-// BLE 연결 상태 확인
+// BSW BLE 연결 상태 확인
 bool ble_is_connected(ble_conn_handle_t conn_handle)
 {
-    connection_info_t* conn = find_connection_by_conn_id(conn_handle);
-    return (conn && conn->connected);
+    for (int i = 0; i < BSW_MAX_CONNECTIONS; i++) {
+        if (g_bsw_connections[i].handle == conn_handle && g_bsw_connections[i].connected) {
+            return true;
+        }
+    }
+    return false;
 }
 
-// UUID 헬퍼 함수들
+// BSW 헬퍼 함수들
+static bsw_service_info_t* bsw_find_service_by_handle(ble_service_handle_t handle)
+{
+    for (int i = 0; i < BSW_MAX_SERVICES; i++) {
+        if (g_bsw_services[i].in_use && g_bsw_services[i].handle == handle) {
+            return &g_bsw_services[i];
+        }
+    }
+    return NULL;
+}
+
+static bsw_char_info_t* bsw_find_char_by_handle(ble_char_handle_t handle)
+{
+    for (int i = 0; i < BSW_MAX_CHARACTERISTICS; i++) {
+        if (g_bsw_characteristics[i].in_use && g_bsw_characteristics[i].handle == handle) {
+            return &g_bsw_characteristics[i];
+        }
+    }
+    return NULL;
+}
+
+// BSW BLE 상태 조회 함수
+bool ble_get_controller_status(void)
+{
+    if (!g_bsw_ble.initialized) {
+        return false;
+    }
+    
+    uint32_t status = BSW_BLE_REG_READ(BSW_BLE_CTRL_STATUS);
+    return (status & 0x03) == 0x03;  // 활성화 및 준비 상태 확인
+}
+
+// BSW BLE 광고 상태 조회 함수
+bool ble_get_advertising_status(void)
+{
+    if (!g_bsw_ble.initialized) {
+        return false;
+    }
+    
+    uint32_t config = BSW_BLE_REG_READ(BSW_BLE_ADV_CONFIG);
+    return (config & BSW_BLE_ADV_ENABLE_BIT) != 0;
+}
+
+// UUID 헬퍼 함수들 (기존과 동일)
 ble_uuid_t ble_uuid_from_16(uint16_t uuid16)
 {
     ble_uuid_t uuid = {0};
@@ -385,190 +428,4 @@ ble_uuid_t ble_uuid_from_128(const uint8_t uuid128[16])
     uuid.type = 1; // 128비트
     memcpy(uuid.uuid128, uuid128, 16);
     return uuid;
-}
-
-// 내부 함수 구현들
-
-static esp_err_t setup_advertising(void)
-{
-    // 광고 데이터 설정
-    g_ble_ctx.adv_data.set_scan_rsp = false;
-    g_ble_ctx.adv_data.include_name = true;
-    g_ble_ctx.adv_data.include_txpower = true;
-    g_ble_ctx.adv_data.min_interval = 0x0006;
-    g_ble_ctx.adv_data.max_interval = 0x0010;
-    g_ble_ctx.adv_data.appearance = 0x00;
-    g_ble_ctx.adv_data.manufacturer_len = 0;
-    g_ble_ctx.adv_data.p_manufacturer_data = NULL;
-    g_ble_ctx.adv_data.service_data_len = 0;
-    g_ble_ctx.adv_data.p_service_data = NULL;
-    g_ble_ctx.adv_data.service_uuid_len = 0;
-    g_ble_ctx.adv_data.p_service_uuid = NULL;
-    g_ble_ctx.adv_data.flag = (ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT);
-    
-    esp_err_t ret = esp_ble_gap_config_adv_data(&g_ble_ctx.adv_data);
-    if (ret) {
-        ESP_LOGE(TAG, "Config adv data failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    // 광고 파라미터 설정
-    g_ble_ctx.adv_params.adv_int_min = 0x20;
-    g_ble_ctx.adv_params.adv_int_max = 0x40;
-    g_ble_ctx.adv_params.adv_type = ADV_TYPE_IND;
-    g_ble_ctx.adv_params.own_addr_type = BLE_ADDR_TYPE_PUBLIC;
-    g_ble_ctx.adv_params.channel_map = ADV_CHNL_ALL;
-    g_ble_ctx.adv_params.adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY;
-    
-    return ESP_OK;
-}
-
-static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t* param)
-{
-    switch (event) {
-        case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
-            ESP_LOGI(TAG, "Advertising data set complete");
-            break;
-            
-        case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
-            if (param->adv_start_cmpl.status != ESP_BT_STATUS_SUCCESS) {
-                ESP_LOGE(TAG, "Advertising start failed");
-            } else {
-                ESP_LOGI(TAG, "Advertising started successfully");
-            }
-            break;
-            
-        case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
-            ESP_LOGI(TAG, "Advertising stopped");
-            break;
-            
-        default:
-            break;
-    }
-}
-
-static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t* param)
-{
-    switch (event) {
-        case ESP_GATTS_REG_EVT:
-            ESP_LOGI(TAG, "GATTS app registered, status %d, app_id %d", param->reg.status, param->reg.app_id);
-            g_ble_ctx.gatts_if = gatts_if;
-            g_ble_ctx.initialized = true;
-            
-            // 디바이스 이름 설정
-            esp_ble_gap_set_device_name(g_ble_ctx.device_name);
-            break;
-            
-        case ESP_GATTS_CONNECT_EVT:
-            ESP_LOGI(TAG, "Client connected, conn_id %d", param->connect.conn_id);
-            
-            // 연결 정보 저장
-            connection_info_t* conn = get_free_connection_slot();
-            if (conn) {
-                conn->handle = param->connect.conn_id;
-                conn->conn_id = param->connect.conn_id;
-                memcpy(conn->remote_bda, param->connect.remote_bda, sizeof(esp_bd_addr_t));
-                conn->connected = true;
-                
-                // 이벤트 콜백 호출
-                if (g_ble_ctx.event_callback) {
-                    ble_event_t event = {0};
-                    event.type = BLE_EVENT_CONNECTED;
-                    event.conn_handle = conn->handle;
-                    g_ble_ctx.event_callback(&event, g_ble_ctx.user_data);
-                }
-            }
-            break;
-            
-        case ESP_GATTS_DISCONNECT_EVT:
-            ESP_LOGI(TAG, "Client disconnected, conn_id %d", param->disconnect.conn_id);
-            
-            // 연결 정보 정리
-            connection_info_t* disconn = find_connection_by_conn_id(param->disconnect.conn_id);
-            if (disconn) {
-                // 이벤트 콜백 호출
-                if (g_ble_ctx.event_callback) {
-                    ble_event_t event = {0};
-                    event.type = BLE_EVENT_DISCONNECTED;
-                    event.conn_handle = disconn->handle;
-                    g_ble_ctx.event_callback(&event, g_ble_ctx.user_data);
-                }
-                
-                disconn->connected = false;
-                memset(disconn, 0, sizeof(connection_info_t));
-            }
-            
-            // 광고 재시작
-            esp_ble_gap_start_advertising(&g_ble_ctx.adv_params);
-            break;
-            
-        case ESP_GATTS_WRITE_EVT:
-            // 데이터 수신 이벤트
-            if (g_ble_ctx.event_callback) {
-                // 특성 핸들로 특성 찾기
-                char_info_t* characteristic = NULL;
-                for (int i = 0; i < MAX_CHARACTERISTICS; i++) {
-                    if (g_characteristics[i].in_use && 
-                        g_characteristics[i].char_handle == param->write.handle) {
-                        characteristic = &g_characteristics[i];
-                        break;
-                    }
-                }
-                
-                if (characteristic) {
-                    ble_event_t event = {0};
-                    event.type = BLE_EVENT_DATA_RECEIVED;
-                    event.conn_handle = param->write.conn_id;
-                    event.data_received.char_handle = characteristic->handle;
-                    event.data_received.data = param->write.value;
-                    event.data_received.length = param->write.len;
-                    g_ble_ctx.event_callback(&event, g_ble_ctx.user_data);
-                }
-            }
-            break;
-            
-        default:
-            break;
-    }
-}
-
-// 헬퍼 함수들
-static service_info_t* find_service_by_handle(ble_service_handle_t handle)
-{
-    for (int i = 0; i < MAX_SERVICES; i++) {
-        if (g_services[i].in_use && g_services[i].handle == handle) {
-            return &g_services[i];
-        }
-    }
-    return NULL;
-}
-
-static char_info_t* find_char_by_handle(ble_char_handle_t handle)
-{
-    for (int i = 0; i < MAX_CHARACTERISTICS; i++) {
-        if (g_characteristics[i].in_use && g_characteristics[i].handle == handle) {
-            return &g_characteristics[i];
-        }
-    }
-    return NULL;
-}
-
-static connection_info_t* find_connection_by_conn_id(uint16_t conn_id)
-{
-    for (int i = 0; i < MAX_CONNECTIONS; i++) {
-        if (g_connections[i].connected && g_connections[i].conn_id == conn_id) {
-            return &g_connections[i];
-        }
-    }
-    return NULL;
-}
-
-static connection_info_t* get_free_connection_slot(void)
-{
-    for (int i = 0; i < MAX_CONNECTIONS; i++) {
-        if (!g_connections[i].connected) {
-            return &g_connections[i];
-        }
-    }
-    return NULL;
 }

@@ -2,7 +2,10 @@
  * @file ble_controller.c
  * @brief BLE (Bluetooth Low Energy) 컨트롤러 구현
  * 
- * BSW BLE 드라이버를 사용하여 모바일 앱과의 무선 통신을 구현합니다.
+ * BSW BLE 드라이버를 사용하여 모바일 앱과의 무    if (!ble_start_advertising()) {
+        BSW_LOGE(TAG, "Failed to start advertising");
+        return ESP_FAIL;
+    } 구현합니다.
  * GATT 서버로 동작하며, 명령 수신 및 상태 전송 기능을 제공합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
@@ -49,6 +52,8 @@ static void ble_event_handler(const ble_event_t* event, void* user_data);
  * @brief BLE 컨트롤러 초기화 구현
  */
 esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
+    esp_err_t ret;
+    
     if (!ble || !device_name) {
         BSW_LOGE(TAG, "Invalid parameters");
         return ESP_FAIL;
@@ -70,18 +75,16 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     memset(ble->last_command, 0, sizeof(ble->last_command));
 
     // BSW BLE 드라이버 초기화
-    esp_err_t ret = ble_driver_init(device_name, ble_event_handler, ble);
-    if (ret != ESP_OK) {
-        BSW_LOGE(TAG, "Failed to initialize BLE driver: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
-        return ret;
+    if (!ble_driver_init(device_name, ble_event_handler, ble)) {
+        BSW_LOGE(TAG, "Failed to initialize BLE driver");
+        return ESP_FAIL;
     }
 
     // BLE 서비스 생성
     ble_uuid_t service_uuid_struct = ble_uuid_from_128(service_uuid);
-    ret = ble_create_service(&service_uuid_struct, &ble->service_handle);
-    if (ret != ESP_OK) {
-        BSW_LOGE(TAG, "Failed to create BLE service: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
-        return ret;
+    if (!ble_create_service(&service_uuid_struct, &ble->service_handle)) {
+        BSW_LOGE(TAG, "Failed to create BLE service");
+        return ESP_FAIL;
     }
 
     // 명령 특성 추가
@@ -172,11 +175,10 @@ esp_err_t ble_controller_send_status(ble_controller_t* ble, float angle, float v
     }
     
     // Send via BSW BLE driver
-    esp_err_t ret = ble_send_data(ble->conn_handle, ble->status_char_handle,
-                                 buffer, encoded_len, true);
-    if (ret != ESP_OK) {
-        BSW_LOGE(TAG, "Failed to send BLE notification: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
-        return ret;
+    if (!ble_send_data(ble->conn_handle, ble->status_char_handle,
+                       buffer, encoded_len, true)) {
+        BSW_LOGE(TAG, "Failed to send BLE notification");
+        return ESP_FAIL;
     }
     
     BSW_LOGD(TAG, "Status sent: angle=%.2f, vel=%.2f, battery=%d%%", 

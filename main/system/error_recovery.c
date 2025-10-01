@@ -2,7 +2,7 @@
  * @file error_recovery.c
  * @brief 시스템 오류 복구 및 안전 관리 구현
  * 
- * 컴포넌트 초기화 재시도, 실패 처리, 안전 모드 전환 등의
+ *                (ret == BSW_OK) ? "BSW_OK" : "BSW_FAIL");컴포넌트 초기화 재시도, 실패 처리, 안전 모드 전환 등의
  * 시스템 안정성 관련 기능을 구현합니다.
  * BSW 추상화 계층을 사용하여 하드웨어 독립성을 보장합니다.
  * 
@@ -11,9 +11,9 @@
  * @version 2.0
  */
 
+#include "../bsw/system_services.h"  // BSW 시스템 서비스 추상화 (가장 먼저)
 #include "error_recovery.h"
 #include "../config.h"
-#include "../bsw/system_services.h"  // BSW 시스템 서비스 추상화
 #include <string.h>
 
 static const char* TAG = "ERROR_RECOVERY";  ///< 로깅 태그
@@ -27,11 +27,11 @@ static bool safe_mode_active = false;           ///< 안전 모드 활성화 플
  * 
  * 오류 복구 시스템을 초기화하고 모니터링을 시작합니다.
  * 
- * @return esp_err_t 초기화 결과
+ * @return bsw_err_t 초기화 결과
  */
-esp_err_t error_recovery_init(void) {
+bsw_err_t error_recovery_init(void) {
     BSW_LOGI(TAG, "Error recovery system initialized");
-    return ESP_OK;
+    return BSW_OK;
 }
 
 /**
@@ -46,7 +46,7 @@ esp_err_t error_recovery_init(void) {
 bool initialize_component_with_retry(component_info_t* component) {
     // 입력 유효성 검사
     if (component == NULL || component->init_func == NULL) {
-        ESP_LOGE(TAG, "Invalid component configuration");
+        BSW_LOGE(TAG, "Invalid component configuration");
         return false;
     }
 
@@ -54,8 +54,8 @@ bool initialize_component_with_retry(component_info_t* component) {
     
     // 설정된 횟수만큼 초기화 재시도
     for (int retry = 0; retry < CONFIG_MAX_INIT_RETRIES; retry++) {
-        esp_err_t ret = component->init_func();
-        if (ret == ESP_OK) {
+        bsw_err_t ret = component->init_func();
+        if (ret == BSW_OK) {
             component->initialized = true;
             component->retry_count = retry;
             BSW_LOGI(TAG, "Component %s initialized successfully", component->name);
@@ -126,7 +126,7 @@ void handle_component_failure(component_info_t* component) {
  */
 bool is_component_operational(const char* name) {
     for (int i = 0; i < component_count; i++) {
-        if (bsw_strcmp(system_components[i].name, name) == 0) {
+        if (strcmp(system_components[i].name, name) == 0) {
             return system_components[i].initialized;
         }
     }

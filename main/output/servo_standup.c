@@ -54,7 +54,7 @@ static void servo_set_angle(servo_standup_t* servo, int angle) {
     uint32_t duty = (pulse_width * ((1 << 14) - 1)) / (1000000 / SERVO_FREQ);
     
     // BSW PWM 인터페이스 사용하여 듀티 설정
-    pwm_servo_set_duty(servo->servo_channel, duty);
+    pwm_set_duty(servo->servo_channel, duty);
     
     servo->current_angle = angle;
 }
@@ -96,7 +96,7 @@ esp_err_t servo_standup_init(servo_standup_t* servo, bsw_gpio_num_t pin, pwm_cha
 
     // Set initial position
     servo_set_angle(servo, retract_angle);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    bsw_delay_ms(100);
 
     BSW_LOGI(SERVO_TAG, "Servo standup initialized");
     return ESP_OK;
@@ -130,13 +130,13 @@ void servo_standup_update(servo_standup_t* servo) {
         servo->standup_requested = false;
         servo->standup_in_progress = true;
         servo->state = STANDUP_EXTENDING;
-        servo->state_start_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        servo->state_start_time = bsw_get_time_ms();
         BSW_LOGI(SERVO_TAG, "Starting standup sequence");
     }
     
     if (!servo->standup_in_progress) return;
     
-    uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint32_t current_time = bsw_get_time_ms();
     uint32_t elapsed_time = current_time - servo->state_start_time;
     
     switch (servo->state) {

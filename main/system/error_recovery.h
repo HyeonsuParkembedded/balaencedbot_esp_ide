@@ -38,7 +38,7 @@ typedef enum {
  * 
  * 각 컴포넌트의 초기화 함수 시그니처입니다.
  */
-typedef esp_err_t (*component_init_func_t)(void);
+typedef bsw_err_t (*component_init_func_t)(void);
 
 /**
  * @brief 컴포넌트 정보 구조체
@@ -58,11 +58,11 @@ typedef struct {
  * 
  * 오류 복구 메커니즘을 초기화하고 시스템 모니터링을 시작합니다.
  * 
- * @return esp_err_t 초기화 결과
+ * @return bsw_err_t 초기화 결과
  * @retval ESP_OK 성공
  * @retval ESP_FAIL 실패
  */
-esp_err_t error_recovery_init(void);
+bsw_err_t error_recovery_init(void);
 
 /**
  * @brief 재시도 기능이 있는 컴포넌트 초기화

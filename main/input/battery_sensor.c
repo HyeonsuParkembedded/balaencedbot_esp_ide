@@ -42,7 +42,7 @@ esp_err_t battery_sensor_init(battery_sensor_t* battery, adc_channel_t channel,
     
     esp_err_t ret = adc_oneshot_new_unit(&init_config, &battery->adc_handle);
     if (ret != ESP_OK) {
-        BSW_LOGE(TAG, "Failed to initialize ADC unit: %s", esp_err_to_name(ret));
+        BSW_LOGE(TAG, "Failed to initialize ADC unit");
         return ret;
     }
 
@@ -54,7 +54,7 @@ esp_err_t battery_sensor_init(battery_sensor_t* battery, adc_channel_t channel,
     
     ret = adc_oneshot_config_channel(battery->adc_handle, channel, &config);
     if (ret != ESP_OK) {
-        BSW_LOGE(TAG, "Failed to configure ADC channel: %s", esp_err_to_name(ret));
+        bsw_log_bitwise(BSW_LOG_ERROR, TAG, "Failed to configure ADC channel");
         adc_oneshot_del_unit(battery->adc_handle);
         return ret;
     }
@@ -77,8 +77,8 @@ esp_err_t battery_sensor_init(battery_sensor_t* battery, adc_channel_t channel,
     battery->last_voltage = 0.0f;
     battery->battery_level = BATTERY_LEVEL_NORMAL;
     
-    BSW_LOGI(TAG, "Battery sensor initialized - Channel: %d, Voltage divider ratio: %.2f", 
-             channel, battery->voltage_divider_ratio);
+    BSW_LOGI(TAG, "Battery sensor initialized - Channel: %d", 
+             (int)channel);
     
     return ESP_OK;
 }
@@ -88,14 +88,14 @@ esp_err_t battery_sensor_init(battery_sensor_t* battery, adc_channel_t channel,
  */
 float battery_sensor_read_voltage(battery_sensor_t* battery) {
     if (!battery || !battery->initialized) {
-        BSW_LOGE(TAG, "Battery sensor not initialized");
+        bsw_log_bitwise(BSW_LOG_ERROR, TAG, "Battery sensor not initialized");
         return -1.0f;
     }
 
     int adc_raw = 0;
     esp_err_t ret = adc_oneshot_read(battery->adc_handle, battery->channel, &adc_raw);
     if (ret != ESP_OK) {
-        BSW_LOGE(TAG, "ADC read failed: %s", esp_err_to_name(ret));
+        bsw_log_bitwise(BSW_LOG_ERROR, TAG, "ADC read failed");
         return -1.0f;
     }
 
@@ -104,7 +104,7 @@ float battery_sensor_read_voltage(battery_sensor_t* battery) {
         // 교정된 값 사용
         ret = adc_cali_raw_to_voltage(battery->adc_cali_handle, adc_raw, &voltage_mv);
         if (ret != ESP_OK) {
-            BSW_LOGE(TAG, "ADC calibration failed: %s", esp_err_to_name(ret));
+            bsw_log_bitwise(BSW_LOG_ERROR, TAG, "ADC calibration failed");
             return -1.0f;
         }
     } else {

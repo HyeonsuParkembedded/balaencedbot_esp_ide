@@ -10,8 +10,8 @@
  * @version 1.0
  */
 
-#include "encoder_sensor.h"
 #include "../bsw/system_services.h"
+#include "encoder_sensor.h"
 #include "../bsw/gpio_driver.h"
 #include <math.h>
 
@@ -64,7 +64,7 @@ static void IRAM_ATTR encoder_isr_handler(void* arg) {
  * @return ESP_OK 성공, ESP_FAIL GPIO 설정 또는 ISR 등록 실패
  */
 esp_err_t encoder_sensor_init(encoder_sensor_t* encoder,
-                             gpio_num_t pin_a, gpio_num_t pin_b,
+                             bsw_gpio_num_t pin_a, bsw_gpio_num_t pin_b,
                              int pulses_per_rev, float wheel_diam) {
     encoder->encoder_pin_a = pin_a;
     encoder->encoder_pin_b = pin_b;
