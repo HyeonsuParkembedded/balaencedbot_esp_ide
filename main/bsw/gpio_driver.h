@@ -78,8 +78,17 @@ typedef struct {
  * @brief ESP32-C6 GPIO 레지스터 직접 제어 매크로 (TRM 기반)
  */
 #ifndef GPIO_PIN_COUNT
-#define GPIO_PIN_COUNT 31  ///< ESP32-C6 GPIO 핀 수 (0-30)
+#define GPIO_PIN_COUNT 31  ///< ESP32-C6 GPIO 물리적 핀 수 (0-30)
 #endif
+
+#define GPIO_USABLE_PIN_COUNT 26  ///< 사용 가능한 GPIO 핀 수 (0-25, GPIO 26-30은 Flash 전용)
+#define GPIO_FLASH_PIN_START 26   ///< Flash 전용 핀 시작 번호
+
+/**
+ * @warning ESP32-C6에서 GPIO 26-30은 내부 Flash 연결에 사용되며,
+ *          사용자가 임의로 사용할 수 없습니다. 이 핀들에 접근 시도 시
+ *          ESP_ERR_NOT_SUPPORTED 에러가 반환됩니다.
+ */
 
 // 하드웨어 레지스터 직접 주소 (ESP32-C6 Technical Reference Manual 기준)
 // ESP32-C6 GPIO 베이스 주소: 0x60004000 (TRM Chapter 6)
@@ -99,14 +108,23 @@ typedef struct {
 // ESP32-C6에서 GPIO_PINn_REG는 모든 핀 설정을 통합 관리합니다.
 #define GPIO_PIN_N_REG(n) (GPIO_BASE_ADDR + BSW_GPIO_PIN_CONFIG_REG_BASE_OFFSET + ((n) * 4))
 
+// GPIO 인터럽트 관련 레지스터 (ESP32-C6 TRM Chapter 6)
+#define BSW_GPIO_STATUS_REG      (GPIO_BASE_ADDR + 0x0044)    ///< GPIO 인터럽트 상태 레지스터
+#define BSW_GPIO_STATUS_W1TC_REG (GPIO_BASE_ADDR + 0x0048)    ///< GPIO 인터럽트 상태 클리어 레지스터
+#define BSW_GPIO_PCPU_INT_REG    (GPIO_BASE_ADDR + 0x005C)    ///< GPIO CPU 인터럽트 상태 레지스터
+
 // GPIO_PINn_REG 비트 필드 정의 (ESP32-C6 TRM Chapter 6.4.6 기준)
-// 이 레지스터 하나로 드라이브 강도, 오픈 드레인, 풀업/풀다운, 슬루율 등을 모두 제어
+// 이 레지스터 하나로 드라이브 강도, 오픈 드레인, 풀업/풀다운, 슬루율, 인터럽트 등을 모두 제어
 #define GPIO_PIN_DRIVE_STRENGTH_MASK (0x3U << 0)   ///< 드라이브 강도 (비트 1:0, FUN_DRV)
 #define GPIO_PIN_DRIVE_STRENGTH_SHIFT 0
 #define GPIO_PIN_PAD_DRIVER_BIT   (1U << 2)        ///< 오픈 드레인 제어 (비트 2)
 #define GPIO_PIN_PULLUP_BIT       (1U << 7)        ///< 풀업 활성화 (비트 7, FUN_WPU)
 #define GPIO_PIN_PULLDOWN_BIT     (1U << 8)        ///< 풀다운 활성화 (비트 8, FUN_WPD)
 #define GPIO_PIN_SLEW_RATE_BIT    (1U << 9)        ///< 슬루 레이트 (비트 9, FUN_SLP_SEL)
+#define GPIO_PIN_INT_ENA_MASK     (0x1FU << 13)    ///< 인터럽트 활성화 (비트 17:13, INT_ENA)
+#define GPIO_PIN_INT_ENA_SHIFT    13
+#define GPIO_PIN_INT_TYPE_MASK    (0x7U << 7)      ///< 인터럽트 타입 (비트 9:7, INT_TYPE)
+#define GPIO_PIN_INT_TYPE_SHIFT   7
 
 /**
  * @note ESP-IDF의 REG_WRITE(), REG_READ() 매크로를 사용합니다.
@@ -262,12 +280,17 @@ void bsw_gpio_configure_iomux(bsw_gpio_num_t gpio_num, uint32_t func_sel, bool p
 void bsw_gpio_set_drive_strength(bsw_gpio_num_t gpio_num, uint8_t strength);
 void bsw_gpio_set_slew_rate(bsw_gpio_num_t gpio_num, bool fast_slew);
 
-// BSW GPIO 인터럽트 처리 함수들 (순수 비트연산 기반)
+// BSW GPIO 인터럽트 처리 함수들 (하드웨어 인터럽트)
 esp_err_t bsw_gpio_install_isr_service(int intr_alloc_flags);
 esp_err_t bsw_gpio_isr_handler_add(bsw_gpio_num_t gpio_num, bsw_gpio_isr_t isr_handler, void* args);
 esp_err_t bsw_gpio_isr_handler_remove(bsw_gpio_num_t gpio_num);
 void bsw_gpio_uninstall_isr_service(void);
-void bsw_gpio_poll_isr(bsw_gpio_num_t gpio_num);  // 폴링 기반 ISR 시뮬레이션
+esp_err_t bsw_gpio_set_intr_type(bsw_gpio_num_t gpio_num, bsw_gpio_int_type_t intr_type);
+esp_err_t bsw_gpio_intr_enable(bsw_gpio_num_t gpio_num);
+esp_err_t bsw_gpio_intr_disable(bsw_gpio_num_t gpio_num);
+
+// 폴링 기반 ISR (하위 호환성 유지, 사용 비권장)
+void bsw_gpio_poll_isr(bsw_gpio_num_t gpio_num);
 
 #ifdef __cplusplus
 }

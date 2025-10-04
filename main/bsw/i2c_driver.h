@@ -7,14 +7,17 @@
  * 
  * 주요 기능:
  * - ESP32-C6 I2C 컨트롤러 레지스터 직접 제어
- * - 하드웨어 FIFO 기반 데이터 송수신
- * - 고속 통신 지원 (Standard 100kHz, Fast 400kHz)
- * - 인터럽트 기반 비동기 통신 가능
+ * - 하드웨어 FIFO 기반 데이터 송수신 (32바이트 초과 데이터 자동 분할)
+ * - GPIO Matrix를 통한 유연한 핀 매핑
+ * - 고속 통신 지원 (Standard 100kHz, Fast 400kHz, Fast+ 1MHz)
+ * - 멀티태스크 환경 지원 (Mutex 기반 동기화)
+ * - 자동 버스 복구 메커니즘
+ * - 동적 APB 클럭 주파수 감지
  * - CPU 부하 최소화
  * 
  * @author Hyeonsu Park, Suyong Kim
  * @date 2025-10-04
- * @version 4.0 (Hardware I2C Controller)
+ * @version 6.0 (Enhanced with Mutex, Bus Recovery, Large Data Support)
  */
 
 #ifndef I2C_DRIVER_H
@@ -28,11 +31,14 @@
 /**
  * @brief ESP32-C6 I2C Hardware Controller Register Definitions
  * ESP32-C6 TRM Chapter 24: I2C Controller
+ * 
+ * @note ESP32-C6 only has ONE I2C controller (I2C0)
+ * @warning I2C1 does NOT exist on ESP32-C6
  */
 
-// I2C Controller Base Addresses (ESP32-C6 has 2 I2C controllers)
+// I2C Controller Base Addresses (ESP32-C6 has only 1 I2C controller)
 #define I2C0_BASE_ADDR          0x60013000UL
-#define I2C1_BASE_ADDR          0x60014000UL
+// #define I2C1_BASE_ADDR       0x60014000UL  // ❌ NOT AVAILABLE on ESP32-C6
 
 // I2C Register Offsets (ESP32-C6 TRM Chapter 24.4)
 #define I2C_SCL_LOW_PERIOD_REG_OFFSET       0x0000  ///< SCL Low Period Register
@@ -107,11 +113,15 @@
 
 /**
  * @brief BSW I2C Port Type Definition
+ * 
+ * @warning ESP32-C6 ONLY supports I2C0!
+ * @note BSW_I2C_PORT_1 is defined for code compatibility but CANNOT be used on ESP32-C6
+ * @note Attempting to use I2C1 will result in ESP_ERR_INVALID_ARG
  */
 typedef enum {
-    BSW_I2C_PORT_0 = 0,         ///< I2C Port 0 (Base: 0x60013000)
-    BSW_I2C_PORT_1,             ///< I2C Port 1 (Base: 0x60014000)
-    BSW_I2C_PORT_MAX
+    BSW_I2C_PORT_0 = 0,         ///< I2C Port 0 (Base: 0x60013000) - ✅ Available on ESP32-C6
+    BSW_I2C_PORT_1,             ///< I2C Port 1 - ❌ NOT available on ESP32-C6 (reserved for compatibility)
+    BSW_I2C_PORT_MAX            ///< Maximum port count (=2 for enum, but only 1 usable on ESP32-C6)
 } bsw_i2c_port_t;
 
 /**
@@ -267,6 +277,21 @@ esp_err_t i2c_read_raw(bsw_i2c_port_t port, uint8_t device_addr, uint8_t* data, 
  *         - ESP_FAIL: 해제 실패
  */
 esp_err_t i2c_driver_deinit(bsw_i2c_port_t port);
+
+/**
+ * @brief I2C Bus Recovery Function
+ * 
+ * I2C 버스가 hang 상태일 때 SCL 클럭 펄스를 생성하여 복구합니다.
+ * 
+ * @param port I2C 포트 번호
+ * @return esp_err_t 
+ *         - ESP_OK: 복구 성공
+ *         - ESP_ERR_INVALID_STATE: 초기화되지 않음
+ * 
+ * @note 이 함수는 통신 실패 시 자동으로 호출됩니다.
+ * @note 필요한 경우 수동으로 호출할 수도 있습니다.
+ */
+esp_err_t i2c_bus_recovery(bsw_i2c_port_t port);
 
 /** @} */ // I2C_DRIVER
 
