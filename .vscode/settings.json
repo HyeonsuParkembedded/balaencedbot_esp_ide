@@ -28,6 +28,7 @@
     "bitbang",
     "bluedroid",
     "CHNL",
+    "COMD",
     "deinitialized",
     "errorlevel",
     "ESPTOOLPY",
@@ -49,10 +50,12 @@
     "LOGW",
     "luμs",
     "pulsewidth",
+    "RXFIFO",
     "SRCS",
     "srvc",
     "Suyong",
-    "txpower"
+    "txpower",
+    "Wunused"
   ],
   "files.associations": {
     "string.h": "c",

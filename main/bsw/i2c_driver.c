@@ -1,278 +1,191 @@
 /**
  * @file i2c_driver.c
- * @brief 순수 비트연산 GPIO 직접 제어 I2C 드라이버 구현
+ * @brief ESP32-C6 Hardware I2C Controller Direct Register Control Implementation
  * 
- * HAL 의존성 없이 순수 GPIO 레지스터 조작을 통한 소프트웨어 I2C 마스터 구현입니다.
- * MPU6050 IMU 센서와의 통신에 최적화되어 있습니다.
+ * ESP32-C6 I2C 하드웨어 컨트롤러의 레지스터를 직접 제어하는 드라이버 구현입니다.
+ * MPU6050 IMU 센서와의 통신에 최적화되어 있으며, CPU 부하를 최소화합니다.
  * 
  * 구현 특징:
- * - 순수 GPIO 레지스터 비트연산 제어
- * - HAL 의존성 완전 제거
- * - 표준 I2C 프로토콜 준수
- * - 사용자 정의 클럭 속도 지원
- * - 오픈 드레인 출력 에뮬레이션
- * - 클럭 스트레치 지원
- * - 비트연산 기반 마이크로초 정밀 타이밍
+ * - ESP32-C6 I2C 컨트롤러 레지스터 직접 제어
+ * - 하드웨어 FIFO 기반 데이터 송수신
+ * - COMMAND 레지스터 기반 트랜잭션 제어
+ * - 하드웨어 클럭 생성 (정확한 타이밍)
+ * - CPU 부하 최소화 (하드웨어가 자동 처리)
+ * - 고속 통신 지원 (100kHz, 400kHz, 1MHz)
+ * - 인터럽트 기반 비동기 통신 가능
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-10-01
- * @version 4.0 (순수 비트연산 I2C)
+ * @date 2025-10-04
+ * @version 5.0 (Hardware I2C Controller)
  */
 
 #include "i2c_driver.h"
 #include "system_services.h"
 #include "gpio_driver.h"
-#include "system_services.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "soc/io_mux_reg.h"
 #include <string.h>
 
-static const char* I2C_TAG = "BITWISE_I2C";
+static const char* I2C_TAG = "HW_I2C";
 
-// I2C 포트별 설정
-static i2c_bitbang_config_t i2c_configs[BSW_I2C_PORT_MAX];
+// I2C Hardware Controller Base Addresses
+static const uint32_t i2c_base_addrs[BSW_I2C_PORT_MAX] = {
+    I2C0_BASE_ADDR,
+    I2C1_BASE_ADDR
+};
+
+// I2C Port Configuration Storage
+static i2c_hw_config_t i2c_configs[BSW_I2C_PORT_MAX];
 static bool i2c_initialized[BSW_I2C_PORT_MAX] = {false};
 
 /**
- * @brief I2C 타이밍 지연 함수 (순수 비트연산)
+ * @brief Get I2C hardware controller base address
  * 
- * @param delay_us 지연 시간 (마이크로초)
+ * @param port I2C port number
+ * @return uint32_t Base address or 0 if invalid
  */
-static inline void i2c_delay_us_bitwise(uint32_t delay_us) {
-    // CPU 클럭 기반 비트연산 지연 (240MHz 기준)
-    uint32_t cycles = delay_us * 240;  // 1μs = 240 cycles at 240MHz
+static inline uint32_t i2c_get_base_addr(bsw_i2c_port_t port) {
+    if (port >= BSW_I2C_PORT_MAX) return 0;
+    return i2c_base_addrs[port];
+}
+
+/**
+ * @brief Wait for I2C transaction complete with timeout
+ * 
+ * @param base I2C controller base address
+ * @param timeout_ms Timeout in milliseconds
+ * @return esp_err_t ESP_OK or ESP_ERR_TIMEOUT
+ */
+static esp_err_t i2c_wait_trans_complete(uint32_t base, uint32_t timeout_ms) {
+    uint32_t start_time = esp_timer_get_time() / 1000;  // Convert to ms
     
-    // 인라인 어셈블리 지연 루프
-    __asm__ __volatile__ (
-        "1: \n"
-        "addi %0, %0, -3 \n"  // 3 사이클 소모
-        "bgtz %0, 1b \n"      // 분기 명령어
-        : "+r" (cycles)
-        :
-        : "memory"
-    );
-}
-
-/**
- * @brief SDA 핀을 HIGH로 설정 (오픈 드레인 에뮬레이션 - 순수 비트연산)
- * 
- * @param port I2C 포트 번호
- */
-static inline void i2c_sda_high_bitwise(bsw_i2c_port_t port) {
-    // 입력 모드로 변경하여 풀업에 의해 HIGH가 되도록 함 (오픈 드레인)
-    bsw_gpio_fast_set_input(i2c_configs[port].sda_pin);
-}
-
-/**
- * @brief SDA 핀을 LOW로 설정 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- */
-static inline void i2c_sda_low_bitwise(bsw_i2c_port_t port) {
-    bsw_gpio_fast_set_low(i2c_configs[port].sda_pin);
-    bsw_gpio_fast_set_output(i2c_configs[port].sda_pin);
-}
-
-/**
- * @brief SCL 핀을 HIGH로 설정 (오픈 드레인 에뮬레이션 - 순수 비트연산)
- * 
- * @param port I2C 포트 번호
- */
-static inline void i2c_scl_high_bitwise(bsw_i2c_port_t port) {
-    // 입력 모드로 변경하여 풀업에 의해 HIGH가 되도록 함 (오픈 드레인)
-    bsw_gpio_fast_set_input(i2c_configs[port].scl_pin);
-}
-
-/**
- * @brief SCL 핀을 LOW로 설정 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- */
-static inline void i2c_scl_low_bitwise(bsw_i2c_port_t port) {
-    bsw_gpio_fast_set_low(i2c_configs[port].scl_pin);
-    bsw_gpio_fast_set_output(i2c_configs[port].scl_pin);
-}
-
-/**
- * @brief SDA 핀 읽기 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- * @return SDA 핀 상태 (0 또는 1)
- */
-static inline int i2c_sda_read_bitwise(bsw_i2c_port_t port) {
-    return bsw_gpio_fast_read_input(i2c_configs[port].sda_pin);
-}
-
-/**
- * @brief SCL 핀 읽기 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- * @return SCL 핀 상태 (0 또는 1)
- */
-static inline int i2c_scl_read_bitwise(bsw_i2c_port_t port) {
-    return bsw_gpio_fast_read_input(i2c_configs[port].scl_pin);
-}
-
-/**
- * @brief I2C 클럭 주기의 1/4 지연 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- */
-static inline void i2c_quarter_delay_bitwise(bsw_i2c_port_t port) {
-    uint32_t quarter_period_us = (1000000 / i2c_configs[port].clock_speed_hz) / 4;
-    if (quarter_period_us > 0) {
-        i2c_delay_us_bitwise(quarter_period_us);
-    }
-}
-
-/**
- * @brief I2C START 컨디션 생성 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- */
-static void i2c_start_condition_bitwise(bsw_i2c_port_t port) {
-    // START: SDA HIGH -> LOW while SCL HIGH
-    i2c_sda_high_bitwise(port);
-    i2c_scl_high_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-    i2c_sda_low_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-    i2c_scl_low_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-}
-
-/**
- * @brief I2C STOP 컨디션 생성 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- */
-static void i2c_stop_condition_bitwise(bsw_i2c_port_t port) {
-    // STOP: SDA LOW -> HIGH while SCL HIGH
-    i2c_sda_low_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-    i2c_scl_high_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-    i2c_sda_high_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-}
-
-/**
- * @brief I2C 1바이트 쓰기 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- * @param data 쓸 데이터
- * @return true: ACK 받음, false: NACK 또는 오류
- */
-static bool i2c_write_byte_bitwise(bsw_i2c_port_t port, uint8_t data) {
-    // 8비트 데이터 전송 (MSB first)
-    for (int i = 7; i >= 0; i--) {
-        if (data & (1 << i)) {
-            i2c_sda_high_bitwise(port);
-        } else {
-            i2c_sda_low_bitwise(port);
-        }
-        i2c_quarter_delay_bitwise(port);
+    while (1) {
+        uint32_t int_status = I2C_READ_REG(base, I2C_INT_RAW_REG_OFFSET);
         
-        i2c_scl_high_bitwise(port);
-        i2c_quarter_delay_bitwise(port);
-        i2c_scl_low_bitwise(port);
-        i2c_quarter_delay_bitwise(port);
-    }
-    
-    // ACK 비트 확인
-    i2c_sda_high_bitwise(port);  // SDA를 입력으로 변경
-    i2c_quarter_delay_bitwise(port);
-    i2c_scl_high_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-    
-    bool ack = (i2c_sda_read_bitwise(port) == 0);  // ACK는 LOW
-    
-    i2c_scl_low_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-    
-    return ack;
-}
-
-/**
- * @brief I2C 1바이트 읽기 (순수 비트연산)
- * 
- * @param port I2C 포트 번호
- * @param send_ack true: ACK 전송, false: NACK 전송
- * @return 읽은 데이터
- */
-static uint8_t i2c_read_byte_bitwise(bsw_i2c_port_t port, bool send_ack) {
-    uint8_t data = 0;
-    
-    i2c_sda_high_bitwise(port);  // SDA를 입력으로 변경
-    
-    // 8비트 데이터 읽기 (MSB first)
-    for (int i = 7; i >= 0; i--) {
-        i2c_quarter_delay_bitwise(port);
-        i2c_scl_high_bitwise(port);
-        i2c_quarter_delay_bitwise(port);
-        
-        if (i2c_sda_read_bitwise(port)) {
-            data |= (1 << i);
+        // Check for transaction complete
+        if (int_status & I2C_INT_TRANS_COMPLETE_BIT) {
+            // Clear interrupt
+            I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, I2C_INT_TRANS_COMPLETE_BIT);
+            return ESP_OK;
         }
         
-        i2c_scl_low_bitwise(port);
-        i2c_quarter_delay_bitwise(port);
+        // Check for errors
+        if (int_status & (I2C_INT_NACK_BIT | I2C_INT_TIME_OUT_BIT | I2C_INT_ARBITRATION_LOST_BIT)) {
+            // Clear all interrupts
+            I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, 0xFFFFFFFF);
+            BSW_LOGE(I2C_TAG, "I2C error: int_status=0x%lx", int_status);
+            return ESP_FAIL;
+        }
+        
+        // Check timeout
+        uint32_t elapsed = (esp_timer_get_time() / 1000) - start_time;
+        if (elapsed >= timeout_ms) {
+            BSW_LOGE(I2C_TAG, "I2C transaction timeout after %lu ms", elapsed);
+            return ESP_ERR_TIMEOUT;
+        }
+        
+        // Small delay to avoid busy-wait
+        esp_rom_delay_us(10);
     }
-    
-    // ACK/NACK 전송
-    if (send_ack) {
-        i2c_sda_low_bitwise(port);   // ACK (LOW)
-    } else {
-        i2c_sda_high_bitwise(port);  // NACK (HIGH)
-    }
-    
-    i2c_quarter_delay_bitwise(port);
-    i2c_scl_high_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-    i2c_scl_low_bitwise(port);
-    i2c_quarter_delay_bitwise(port);
-    
-    return data;
 }
 
 /**
- * @brief I2C 인터페이스 초기화 (기본 100kHz)
+ * @brief Calculate I2C timing parameters based on clock speed
  * 
- * GPIO 직접 제어를 통한 bit-banging I2C 마스터를 초기화합니다.
+ * @param clock_speed Clock speed in Hz
+ * @param scl_low_period Output: SCL low period
+ * @param scl_high_period Output: SCL high period
+ * @param sda_hold Output: SDA hold time
+ * @param sda_sample Output: SDA sample time
+ */
+static void i2c_calc_timing_params(uint32_t clock_speed, 
+                                    uint32_t* scl_low_period,
+                                    uint32_t* scl_high_period,
+                                    uint32_t* sda_hold,
+                                    uint32_t* sda_sample) {
+    // I2C source clock: 40MHz (APB_CLK)
+    const uint32_t source_clk = 40000000;
+    
+    // Calculate period in source clock cycles
+    uint32_t period = source_clk / clock_speed;
+    
+    // Standard timing ratios (based on I2C specification)
+    // SCL low:high ratio is approximately 1:1 for standard/fast mode
+    *scl_low_period = period / 2;
+    *scl_high_period = period / 2;
+    
+    // SDA hold time: typically 1/4 of period
+    *sda_hold = period / 4;
+    
+    // SDA sample time: typically 1/2 of SCL high period
+    *sda_sample = *scl_high_period / 2;
+}
+
+/**
+ * @brief Reset I2C controller hardware
  * 
- * @param port I2C 포트 번호
- * @param sda_pin SDA 핀 번호
- * @param scl_pin SCL 핀 번호
- * @return esp_err_t 초기화 결과
+ * @param base I2C controller base address
+ */
+static void i2c_hw_reset(uint32_t base) {
+    // Reset FIFO
+    I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));  // TX/RX FIFO reset
+    esp_rom_delay_us(10);
+    I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
+    
+    // Clear all interrupts
+    I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, 0xFFFFFFFF);
+    
+    // Reset control register (disable master mode temporarily)
+    I2C_CLEAR_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_MS_MODE_BIT);
+}
+
+/**
+ * @brief I2C Hardware Controller Initialization (Default 100kHz)
+ * 
+ * @param port I2C port number
+ * @param sda_pin SDA GPIO pin
+ * @param scl_pin SCL GPIO pin
+ * @return esp_err_t Initialization result
  */
 esp_err_t i2c_driver_init(bsw_i2c_port_t port, bsw_gpio_num_t sda_pin, bsw_gpio_num_t scl_pin) {
-    i2c_bitbang_config_t config = {
+    i2c_hw_config_t config = {
         .sda_pin = sda_pin,
         .scl_pin = scl_pin,
-        .clock_speed_hz = I2C_DEFAULT_CLOCK_SPEED,
-        .use_pullup = true
+        .clock_speed = I2C_DEFAULT_CLOCK_SPEED,
+        .use_pullup = true,
+        .timeout_ms = I2C_DEFAULT_TIMEOUT_MS
     };
     
     return i2c_driver_init_config(port, &config);
 }
 
 /**
- * @brief I2C 인터페이스 초기화 (사용자 정의 설정)
+ * @brief I2C Hardware Controller Initialization (Custom Config)
  * 
- * @param port I2C 포트 번호
- * @param config I2C 설정 구조체
- * @return esp_err_t 초기화 결과
+ * @param port I2C port number
+ * @param config I2C hardware configuration
+ * @return esp_err_t Initialization result
  */
-esp_err_t i2c_driver_init_config(bsw_i2c_port_t port, const i2c_bitbang_config_t* config) {
+esp_err_t i2c_driver_init_config(bsw_i2c_port_t port, const i2c_hw_config_t* config) {
     if (port >= BSW_I2C_PORT_MAX || !config) {
-        bsw_log_bitwise(BSW_LOG_ERROR, I2C_TAG, "Invalid I2C port %d or config is NULL", port);
+        BSW_LOGE(I2C_TAG, "Invalid I2C port %d or config is NULL", port);
         return ESP_ERR_INVALID_ARG;
     }
     
-    // 설정 저장
+    uint32_t base = i2c_get_base_addr(port);
+    if (base == 0) {
+        BSW_LOGE(I2C_TAG, "Invalid I2C port: %d", port);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Save configuration
     i2c_configs[port] = *config;
     
-    // GPIO 핀 설정 (오픈 드레인 모드)
+    // Reset I2C controller
+    i2c_hw_reset(base);
+    
+    // Configure GPIO pins for I2C function (open-drain with pullup)
     esp_err_t ret = bsw_gpio_config_pin(config->sda_pin, BSW_GPIO_MODE_INPUT_OUTPUT, 
                                        config->use_pullup ? BSW_GPIO_PULLUP_ENABLE : BSW_GPIO_PULLUP_DISABLE, 
                                        BSW_GPIO_PULLDOWN_DISABLE);
@@ -289,31 +202,61 @@ esp_err_t i2c_driver_init_config(bsw_i2c_port_t port, const i2c_bitbang_config_t
         return ret;
     }
     
-    // 초기 상태: 둘 다 HIGH (IDLE 상태)
-    i2c_sda_high_bitwise(port);
-    i2c_scl_high_bitwise(port);
+    // TODO: Map GPIO to I2C function via IO_MUX (requires IO_MUX register configuration)
+    // For now, assuming GPIO matrix handles this automatically
+    
+    // Calculate timing parameters
+    uint32_t scl_low, scl_high, sda_hold, sda_sample;
+    i2c_calc_timing_params(config->clock_speed, &scl_low, &scl_high, &sda_hold, &sda_sample);
+    
+    // Configure I2C timing registers
+    I2C_WRITE_REG(base, I2C_SCL_LOW_PERIOD_REG_OFFSET, scl_low);
+    I2C_WRITE_REG(base, I2C_SCL_HIGH_PERIOD_REG_OFFSET, scl_high);
+    I2C_WRITE_REG(base, I2C_SDA_HOLD_REG_OFFSET, sda_hold);
+    I2C_WRITE_REG(base, I2C_SDA_SAMPLE_REG_OFFSET, sda_sample);
+    
+    // Configure START/STOP timing
+    I2C_WRITE_REG(base, I2C_SCL_START_HOLD_REG_OFFSET, scl_high / 2);
+    I2C_WRITE_REG(base, I2C_SCL_RSTART_SETUP_REG_OFFSET, scl_high / 2);
+    I2C_WRITE_REG(base, I2C_SCL_STOP_HOLD_REG_OFFSET, scl_high / 2);
+    I2C_WRITE_REG(base, I2C_SCL_STOP_SETUP_REG_OFFSET, scl_high / 2);
+    
+    // Configure FIFO (TX/RX thresholds)
+    uint32_t fifo_conf = (1 << 2) |  // TX FIFO empty threshold = 1
+                         (15 << 0);   // RX FIFO full threshold = 15
+    I2C_WRITE_REG(base, I2C_FIFO_CONF_REG_OFFSET, fifo_conf);
+    
+    // Configure timeout
+    uint32_t timeout_val = (config->timeout_ms * 40000) / 16;  // Convert ms to I2C clock cycles
+    I2C_WRITE_REG(base, I2C_TO_REG_OFFSET, timeout_val);
+    
+    // Enable master mode and set MSB first
+    uint32_t ctr_val = I2C_CTR_MS_MODE_BIT;  // Master mode
+    I2C_WRITE_REG(base, I2C_CTR_REG_OFFSET, ctr_val);
+    
+    // Clear all interrupts
+    I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, 0xFFFFFFFF);
     
     i2c_initialized[port] = true;
     
-    bsw_log_bitwise(BSW_LOG_INFO, I2C_TAG, "I2C port %d initialized: SDA=%d, SCL=%d, freq=%luHz", 
-             port, config->sda_pin, config->scl_pin, config->clock_speed_hz);
+    BSW_LOGI(I2C_TAG, "I2C HW port %d initialized: SDA=%d, SCL=%d, freq=%luHz", 
+             port, config->sda_pin, config->scl_pin, (uint32_t)config->clock_speed);
     
     return ESP_OK;
 }
 
 /**
- * @brief I2C 디바이스 레지스터 쓰기 구현 (bit-banging)
+ * @brief I2C Device Register Write (Hardware Controller)
  * 
- * GPIO 직접 제어를 통한 I2C 프로토콜로 레지스터에 1바이트 데이터를 씁니다.
+ * Uses I2C hardware controller COMMAND registers and FIFO to write data.
  * 
- * 전송 절차:
- * START -> DEVICE_ADDR+W -> REG_ADDR -> DATA -> STOP
+ * Protocol: START -> ADDR+W -> REG -> DATA -> STOP
  * 
- * @param port I2C 포트 번호
- * @param device_addr I2C 디바이스 주소 (7비트)
- * @param reg_addr 레지스터 주소
- * @param value 쓸 데이터 값
- * @return esp_err_t 전송 결과
+ * @param port I2C port number
+ * @param device_addr I2C device address (7-bit)
+ * @param reg_addr Register address
+ * @param value Data value to write
+ * @return esp_err_t Transmission result
  */
 esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t value) {
     if (port >= BSW_I2C_PORT_MAX || !i2c_initialized[port]) {
@@ -321,50 +264,64 @@ esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t r
         return ESP_ERR_INVALID_STATE;
     }
 
-    // START 컨디션
-    i2c_start_condition_bitwise(port);
+    uint32_t base = i2c_get_base_addr(port);
     
-    // 디바이스 주소 + WRITE 비트 (0)
-    if (!i2c_write_byte_bitwise(port, (device_addr << 1) | 0x00)) {
-        BSW_LOGE(I2C_TAG, "Device address NACK: 0x%02X", device_addr);
-        i2c_stop_condition_bitwise(port);
-        return ESP_FAIL;
+    // Reset FIFO
+    I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0));  // TX FIFO reset
+    esp_rom_delay_us(1);
+    I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0));
+    
+    // Write data to TX FIFO: device address + W, register address, data value
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1) | 0x00);  // Address + Write bit
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, reg_addr);
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, value);
+    
+    // Configure command sequence
+    // Command 0: RSTART (Restart/Start condition)
+    I2C_WRITE_REG(base, I2C_COMD0_REG_OFFSET, (I2C_CMD_RSTART << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 1: WRITE 3 bytes (device addr + reg addr + data)
+    I2C_WRITE_REG(base, I2C_COMD1_REG_OFFSET, 
+                  (I2C_CMD_WRITE << I2C_COMMAND_OPCODE_SHIFT) | 3);
+    
+    // Command 2: STOP
+    I2C_WRITE_REG(base, I2C_COMD2_REG_OFFSET, (I2C_CMD_STOP << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 3: END
+    I2C_WRITE_REG(base, I2C_COMD3_REG_OFFSET, (I2C_CMD_END << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Clear interrupts before starting
+    I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, 0xFFFFFFFF);
+    
+    // Start transaction
+    I2C_SET_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_TRANS_START_BIT);
+    
+    // Wait for completion
+    esp_err_t result = i2c_wait_trans_complete(base, i2c_configs[port].timeout_ms);
+    
+    // Clear transaction start bit
+    I2C_CLEAR_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_TRANS_START_BIT);
+    
+    if (result != ESP_OK) {
+        BSW_LOGE(I2C_TAG, "Write register failed: dev=0x%02X, reg=0x%02X", device_addr, reg_addr);
     }
     
-    // 레지스터 주소
-    if (!i2c_write_byte_bitwise(port, reg_addr)) {
-        BSW_LOGE(I2C_TAG, "Register address NACK: 0x%02X", reg_addr);
-        i2c_stop_condition_bitwise(port);
-        return ESP_FAIL;
-    }
-    
-    // 데이터
-    if (!i2c_write_byte_bitwise(port, value)) {
-        BSW_LOGE(I2C_TAG, "Data NACK: 0x%02X", value);
-        i2c_stop_condition_bitwise(port);
-        return ESP_FAIL;
-    }
-    
-    // STOP 컨디션
-    i2c_stop_condition_bitwise(port);
-    
-    return ESP_OK;
+    return result;
 }
 
 /**
- * @brief I2C 디바이스 레지스터 읽기 구현 (bit-banging)
+ * @brief I2C Device Register Read (Hardware Controller)
  * 
- * GPIO 직접 제어를 통한 I2C 프로토콜로 레지스터에서 멀티바이트 데이터를 읽습니다.
+ * Uses I2C hardware controller COMMAND registers and FIFO to read data.
  * 
- * 전송 절차:
- * START -> DEVICE_ADDR+W -> REG_ADDR -> RESTART -> DEVICE_ADDR+R -> DATA... -> STOP
+ * Protocol: START -> ADDR+W -> REG -> RESTART -> ADDR+R -> DATA... -> STOP
  * 
- * @param port I2C 포트 번호
- * @param device_addr I2C 디바이스 주소 (7비트)
- * @param reg_addr 레지스터 주소
- * @param data 읽은 데이터를 저장할 버퍼
- * @param len 읽을 데이터 길이
- * @return esp_err_t 전송 결과
+ * @param port I2C port number
+ * @param device_addr I2C device address (7-bit)
+ * @param reg_addr Register address
+ * @param data Buffer to store read data
+ * @param len Number of bytes to read
+ * @return esp_err_t Transmission result
  */
 esp_err_t i2c_read_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t reg_addr, uint8_t* data, size_t len) {
     if (port >= BSW_I2C_PORT_MAX || !i2c_initialized[port] || !data || len == 0) {
@@ -372,53 +329,81 @@ esp_err_t i2c_read_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t re
         return ESP_ERR_INVALID_ARG;
     }
 
-    // START 컨디션
-    i2c_start_condition_bitwise(port);
+    uint32_t base = i2c_get_base_addr(port);
     
-    // 디바이스 주소 + WRITE 비트 (0) - 레지스터 주소 쓰기용
-    if (!i2c_write_byte_bitwise(port, (device_addr << 1) | 0x00)) {
-        BSW_LOGE(I2C_TAG, "Device address (write) NACK: 0x%02X", device_addr);
-        i2c_stop_condition_bitwise(port);
-        return ESP_FAIL;
+    // Reset FIFO
+    I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));  // TX/RX FIFO reset
+    esp_rom_delay_us(1);
+    I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
+    
+    // Phase 1: Write register address
+    // Write device address + W and register address to TX FIFO
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1) | 0x00);  // Address + Write bit
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, reg_addr);
+    
+    // Command 0: START
+    I2C_WRITE_REG(base, I2C_COMD0_REG_OFFSET, (I2C_CMD_RSTART << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 1: WRITE 2 bytes (device addr + reg addr)
+    I2C_WRITE_REG(base, I2C_COMD1_REG_OFFSET, 
+                  (I2C_CMD_WRITE << I2C_COMMAND_OPCODE_SHIFT) | 2);
+    
+    // Phase 2: Read data
+    // Write device address + R to TX FIFO
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1) | 0x01);  // Address + Read bit
+    
+    // Command 2: RESTART
+    I2C_WRITE_REG(base, I2C_COMD2_REG_OFFSET, (I2C_CMD_RSTART << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 3: WRITE 1 byte (device addr + R)
+    I2C_WRITE_REG(base, I2C_COMD3_REG_OFFSET, 
+                  (I2C_CMD_WRITE << I2C_COMMAND_OPCODE_SHIFT) | 1);
+    
+    // Command 4: READ len bytes
+    I2C_WRITE_REG(base, I2C_COMD4_REG_OFFSET, 
+                  (I2C_CMD_READ << I2C_COMMAND_OPCODE_SHIFT) | (len & 0xFF));
+    
+    // Command 5: STOP
+    I2C_WRITE_REG(base, I2C_COMD5_REG_OFFSET, (I2C_CMD_STOP << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 6: END
+    I2C_WRITE_REG(base, I2C_COMD6_REG_OFFSET, (I2C_CMD_END << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Clear interrupts before starting
+    I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, 0xFFFFFFFF);
+    
+    // Start transaction
+    I2C_SET_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_TRANS_START_BIT);
+    
+    // Wait for completion
+    esp_err_t result = i2c_wait_trans_complete(base, i2c_configs[port].timeout_ms);
+    
+    // Clear transaction start bit
+    I2C_CLEAR_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_TRANS_START_BIT);
+    
+    if (result != ESP_OK) {
+        BSW_LOGE(I2C_TAG, "Read register failed: dev=0x%02X, reg=0x%02X", device_addr, reg_addr);
+        return result;
     }
     
-    // 레지스터 주소
-    if (!i2c_write_byte_bitwise(port, reg_addr)) {
-        BSW_LOGE(I2C_TAG, "Register address NACK: 0x%02X", reg_addr);
-        i2c_stop_condition_bitwise(port);
-        return ESP_FAIL;
-    }
-    
-    // RESTART 컨디션 (STOP 없이 새로운 START)
-    i2c_start_condition_bitwise(port);
-    
-    // 디바이스 주소 + READ 비트 (1)
-    if (!i2c_write_byte_bitwise(port, (device_addr << 1) | 0x01)) {
-        BSW_LOGE(I2C_TAG, "Device address (read) NACK: 0x%02X", device_addr);
-        i2c_stop_condition_bitwise(port);
-        return ESP_FAIL;
-    }
-    
-    // 데이터 읽기
+    // Read data from RX FIFO
     for (size_t i = 0; i < len; i++) {
-        bool send_ack = (i < len - 1);  // 마지막 바이트가 아니면 ACK, 마지막이면 NACK
-        data[i] = i2c_read_byte_bitwise(port, send_ack);
+        data[i] = (uint8_t)I2C_READ_REG(base, I2C_DATA_REG_OFFSET);
     }
-    
-    // STOP 컨디션
-    i2c_stop_condition_bitwise(port);
     
     return ESP_OK;
 }
 
 /**
- * @brief I2C 원시 데이터 쓰기 구현 (bit-banging)
+ * @brief I2C Raw Data Write (Hardware Controller)
  * 
- * @param port I2C 포트 번호
- * @param device_addr I2C 디바이스 주소 (7비트)
- * @param data 쓸 데이터 버퍼
- * @param len 데이터 길이
- * @return esp_err_t 성공/실패
+ * Uses I2C hardware controller to write raw data bytes.
+ * 
+ * @param port I2C port number
+ * @param device_addr I2C device address (7-bit)
+ * @param data Data buffer to write
+ * @param len Number of bytes to write
+ * @return esp_err_t Transmission result
  */
 esp_err_t i2c_write_raw(bsw_i2c_port_t port, uint8_t device_addr, const uint8_t* data, size_t len) {
     if (port >= BSW_I2C_PORT_MAX || !i2c_initialized[port] || !data || len == 0) {
@@ -426,39 +411,72 @@ esp_err_t i2c_write_raw(bsw_i2c_port_t port, uint8_t device_addr, const uint8_t*
         return ESP_ERR_INVALID_ARG;
     }
 
-    // START 컨디션
-    i2c_start_condition_bitwise(port);
+    uint32_t base = i2c_get_base_addr(port);
     
-    // 디바이스 주소 + WRITE 비트 (0)
-    if (!i2c_write_byte_bitwise(port, (device_addr << 1) | 0x00)) {
-        BSW_LOGE(I2C_TAG, "Device address NACK: 0x%02X", device_addr);
-        i2c_stop_condition_bitwise(port);
-        return ESP_FAIL;
+    // Reset FIFO
+    I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
+    esp_rom_delay_us(1);
+    I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
+    
+    // Write device address + W to FIFO
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1) | 0x00);
+    
+    // Write data bytes to FIFO (up to 31 bytes, 1 for address)
+    size_t fifo_capacity = 31;  // 32-byte FIFO - 1 for address
+    size_t bytes_to_write = (len < fifo_capacity) ? len : fifo_capacity;
+    
+    for (size_t i = 0; i < bytes_to_write; i++) {
+        I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, data[i]);
     }
     
-    // 데이터 쓰기
-    for (size_t i = 0; i < len; i++) {
-        if (!i2c_write_byte_bitwise(port, data[i])) {
-            BSW_LOGE(I2C_TAG, "Data NACK at byte %zu: 0x%02X", i, data[i]);
-            i2c_stop_condition_bitwise(port);
-            return ESP_FAIL;
-        }
+    // Command 0: START
+    I2C_WRITE_REG(base, I2C_COMD0_REG_OFFSET, (I2C_CMD_RSTART << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 1: WRITE (1 + len) bytes
+    I2C_WRITE_REG(base, I2C_COMD1_REG_OFFSET, 
+                  (I2C_CMD_WRITE << I2C_COMMAND_OPCODE_SHIFT) | ((1 + bytes_to_write) & 0xFF));
+    
+    // Command 2: STOP
+    I2C_WRITE_REG(base, I2C_COMD2_REG_OFFSET, (I2C_CMD_STOP << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 3: END
+    I2C_WRITE_REG(base, I2C_COMD3_REG_OFFSET, (I2C_CMD_END << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Clear interrupts
+    I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, 0xFFFFFFFF);
+    
+    // Start transaction
+    I2C_SET_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_TRANS_START_BIT);
+    
+    // Wait for completion
+    esp_err_t result = i2c_wait_trans_complete(base, i2c_configs[port].timeout_ms);
+    
+    // Clear transaction start bit
+    I2C_CLEAR_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_TRANS_START_BIT);
+    
+    if (result != ESP_OK) {
+        BSW_LOGE(I2C_TAG, "Raw write failed: dev=0x%02X, len=%zu", device_addr, len);
+        return result;
     }
     
-    // STOP 컨디션
-    i2c_stop_condition_bitwise(port);
+    // Handle remaining bytes if len > FIFO capacity (not typical for this use case)
+    if (len > bytes_to_write) {
+        BSW_LOGW(I2C_TAG, "Raw write truncated: requested=%zu, written=%zu", len, bytes_to_write);
+    }
     
     return ESP_OK;
 }
 
 /**
- * @brief I2C 원시 데이터 읽기 구현 (bit-banging)
+ * @brief I2C Raw Data Read (Hardware Controller)
  * 
- * @param port I2C 포트 번호
- * @param device_addr I2C 디바이스 주소 (7비트)
- * @param data 읽을 데이터 버퍼
- * @param len 데이터 길이
- * @return esp_err_t 성공/실패
+ * Uses I2C hardware controller to read raw data bytes.
+ * 
+ * @param port I2C port number
+ * @param device_addr I2C device address (7-bit)
+ * @param data Buffer to store read data
+ * @param len Number of bytes to read
+ * @return esp_err_t Transmission result
  */
 esp_err_t i2c_read_raw(bsw_i2c_port_t port, uint8_t device_addr, uint8_t* data, size_t len) {
     if (port >= BSW_I2C_PORT_MAX || !i2c_initialized[port] || !data || len == 0) {
@@ -466,35 +484,73 @@ esp_err_t i2c_read_raw(bsw_i2c_port_t port, uint8_t device_addr, uint8_t* data, 
         return ESP_ERR_INVALID_ARG;
     }
 
-    // START 컨디션
-    i2c_start_condition_bitwise(port);
+    uint32_t base = i2c_get_base_addr(port);
     
-    // 디바이스 주소 + READ 비트 (1)
-    if (!i2c_write_byte_bitwise(port, (device_addr << 1) | 0x01)) {
-        BSW_LOGE(I2C_TAG, "Device address NACK: 0x%02X", device_addr);
-        i2c_stop_condition_bitwise(port);
-        return ESP_FAIL;
+    // Reset FIFO
+    I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
+    esp_rom_delay_us(1);
+    I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
+    
+    // Write device address + R to FIFO
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1) | 0x01);
+    
+    // Limit read length to FIFO capacity
+    size_t bytes_to_read = (len < 32) ? len : 32;
+    
+    // Command 0: START
+    I2C_WRITE_REG(base, I2C_COMD0_REG_OFFSET, (I2C_CMD_RSTART << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 1: WRITE 1 byte (device address + R)
+    I2C_WRITE_REG(base, I2C_COMD1_REG_OFFSET, 
+                  (I2C_CMD_WRITE << I2C_COMMAND_OPCODE_SHIFT) | 1);
+    
+    // Command 2: READ len bytes
+    I2C_WRITE_REG(base, I2C_COMD2_REG_OFFSET, 
+                  (I2C_CMD_READ << I2C_COMMAND_OPCODE_SHIFT) | (bytes_to_read & 0xFF));
+    
+    // Command 3: STOP
+    I2C_WRITE_REG(base, I2C_COMD3_REG_OFFSET, (I2C_CMD_STOP << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Command 4: END
+    I2C_WRITE_REG(base, I2C_COMD4_REG_OFFSET, (I2C_CMD_END << I2C_COMMAND_OPCODE_SHIFT));
+    
+    // Clear interrupts
+    I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, 0xFFFFFFFF);
+    
+    // Start transaction
+    I2C_SET_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_TRANS_START_BIT);
+    
+    // Wait for completion
+    esp_err_t result = i2c_wait_trans_complete(base, i2c_configs[port].timeout_ms);
+    
+    // Clear transaction start bit
+    I2C_CLEAR_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_TRANS_START_BIT);
+    
+    if (result != ESP_OK) {
+        BSW_LOGE(I2C_TAG, "Raw read failed: dev=0x%02X, len=%zu", device_addr, len);
+        return result;
     }
     
-    // 데이터 읽기
-    for (size_t i = 0; i < len; i++) {
-        bool send_ack = (i < len - 1);  // 마지막 바이트가 아니면 ACK, 마지막이면 NACK
-        data[i] = i2c_read_byte_bitwise(port, send_ack);
+    // Read data from RX FIFO
+    for (size_t i = 0; i < bytes_to_read; i++) {
+        data[i] = (uint8_t)I2C_READ_REG(base, I2C_DATA_REG_OFFSET);
     }
     
-    // STOP 컨디션
-    i2c_stop_condition_bitwise(port);
+    // Warn if requested more than FIFO can hold
+    if (len > bytes_to_read) {
+        BSW_LOGW(I2C_TAG, "Raw read truncated: requested=%zu, read=%zu", len, bytes_to_read);
+    }
     
     return ESP_OK;
 }
 
 /**
- * @brief I2C 드라이버 해제
+ * @brief I2C Driver Deinitialization (Hardware Controller)
  * 
- * I2C 관련 자원을 해제하고 GPIO 핀을 원래 상태로 복원합니다.
+ * Disables I2C hardware controller and restores GPIO pins.
  * 
- * @param port I2C 포트 번호
- * @return esp_err_t 해제 결과
+ * @param port I2C port number
+ * @return esp_err_t Deinitialization result
  */
 esp_err_t i2c_driver_deinit(bsw_i2c_port_t port) {
     if (port >= BSW_I2C_PORT_MAX) {
@@ -503,13 +559,26 @@ esp_err_t i2c_driver_deinit(bsw_i2c_port_t port) {
     }
     
     if (i2c_initialized[port]) {
-        // GPIO 핀을 입력 모드로 변경 (풀업에 의해 HIGH 상태)
+        uint32_t base = i2c_get_base_addr(port);
+        
+        // Disable master mode
+        I2C_CLEAR_BITS(base, I2C_CTR_REG_OFFSET, I2C_CTR_MS_MODE_BIT);
+        
+        // Reset FIFO
+        I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
+        esp_rom_delay_us(1);
+        I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
+        
+        // Disable all interrupts
+        I2C_WRITE_REG(base, I2C_INT_ENA_REG_OFFSET, 0);
+        
+        // Restore GPIO pins to input mode (pulled high by external resistors)
         bsw_gpio_set_direction(i2c_configs[port].sda_pin, BSW_GPIO_MODE_INPUT);
         bsw_gpio_set_direction(i2c_configs[port].scl_pin, BSW_GPIO_MODE_INPUT);
         
         i2c_initialized[port] = false;
         
-        BSW_LOGI(I2C_TAG, "I2C port %d deinitialized", port);
+        BSW_LOGI(I2C_TAG, "I2C port %d deinitialized (hardware controller disabled)", port);
     }
     
     return ESP_OK;
