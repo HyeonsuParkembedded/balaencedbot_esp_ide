@@ -3,8 +3,11 @@
 
 # BSW 소스 파일들
 set(BSW_SOURCES
+    "system_services.c"
+    "gpio_driver.c"
     "pwm_driver.c"
     "i2c_driver.c"
+    "uart_driver.c"
     "ble_driver.c"
 )
 

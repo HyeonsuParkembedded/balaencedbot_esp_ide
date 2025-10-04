@@ -81,41 +81,43 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     }
 
     // BLE 서비스 생성
-    ble_uuid_t service_uuid_struct = ble_uuid_from_128(service_uuid);
+    bsw_ble_uuid_t service_uuid_struct = ble_uuid_from_128(service_uuid);
     if (!ble_create_service(&service_uuid_struct, &ble->service_handle)) {
         BSW_LOGE(TAG, "Failed to create BLE service");
         return ESP_FAIL;
     }
 
     // 명령 특성 추가
-    ble_uuid_t cmd_uuid = ble_uuid_from_128(command_char_uuid);
+    bsw_ble_uuid_t cmd_uuid = ble_uuid_from_128(command_char_uuid);
+    ble_char_properties_t cmd_props = { .read = true, .write = true, .notify = false, .indicate = false };
     ret = ble_add_characteristic(ble->service_handle, &cmd_uuid,
-                                BLE_CHAR_PROP_READ | BLE_CHAR_PROP_WRITE,
-                                &ble->command_char_handle);
+                                &cmd_props,
+                                &ble->command_char_handle) ? ESP_OK : ESP_FAIL;
     if (ret != ESP_OK) {
         BSW_LOGE(TAG, "Failed to add command characteristic: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
     // 상태 특성 추가
-    ble_uuid_t status_uuid = ble_uuid_from_128(status_char_uuid);
+    bsw_ble_uuid_t status_uuid = ble_uuid_from_128(status_char_uuid);
+    ble_char_properties_t status_props = { .read = true, .write = false, .notify = true, .indicate = false };
     ret = ble_add_characteristic(ble->service_handle, &status_uuid,
-                                BLE_CHAR_PROP_READ | BLE_CHAR_PROP_NOTIFY,
-                                &ble->status_char_handle);
+                                &status_props,
+                                &ble->status_char_handle) ? ESP_OK : ESP_FAIL;
     if (ret != ESP_OK) {
         BSW_LOGE(TAG, "Failed to add status characteristic: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
     // 서비스 시작
-    ret = ble_start_service(ble->service_handle);
+    ret = ble_start_service(ble->service_handle) ? ESP_OK : ESP_FAIL;
     if (ret != ESP_OK) {
         BSW_LOGE(TAG, "Failed to start BLE service: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
     }
 
     // 광고 시작
-    ret = ble_start_advertising();
+    ret = ble_start_advertising() ? ESP_OK : ESP_FAIL;
     if (ret != ESP_OK) {
         BSW_LOGE(TAG, "Failed to start BLE advertising: %s", (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         return ret;
@@ -143,14 +145,14 @@ remote_command_t ble_controller_get_command(const ble_controller_t* ble) {
  * @brief BLE 연결 상태 확인 구현
  */
 bool ble_controller_is_connected(const ble_controller_t* ble) {
-    return ble->device_connected && ble_is_connected(ble->conn_handle);
+    return ble->device_connected;
 }
 
 /**
  * @brief 로봇 상태 전송 구현
  */
 esp_err_t ble_controller_send_status(ble_controller_t* ble, float angle, float velocity, float battery_voltage) {
-    if (!ble->device_connected || !ble_is_connected(ble->conn_handle)) {
+    if (!ble->device_connected) {
         return ESP_FAIL;
     }
     
@@ -176,7 +178,7 @@ esp_err_t ble_controller_send_status(ble_controller_t* ble, float angle, float v
     
     // Send via BSW BLE driver
     if (!ble_send_data(ble->conn_handle, ble->status_char_handle,
-                       buffer, encoded_len, true)) {
+                       buffer, encoded_len)) {
         BSW_LOGE(TAG, "Failed to send BLE notification");
         return ESP_FAIL;
     }
@@ -276,20 +278,16 @@ static void ble_event_handler(const ble_event_t* event, void* user_data) {
             break;
 
         case BLE_EVENT_DATA_RECEIVED:
-            BSW_LOGI(TAG, "BLE Data received, length: %d", event->data_received.length);
+            BSW_LOGI(TAG, "BLE Data received, length: %d", event->data_received.len);
             // 명령 특성에 데이터가 수신된 경우만 처리
             if (event->data_received.char_handle == ble->command_char_handle) {
                 esp_err_t ret = ble_controller_process_packet(ble,
                                                             event->data_received.data,
-                                                            event->data_received.length);
+                                                            event->data_received.len);
                 if (ret != ESP_OK) {
                     BSW_LOGW(TAG, "Failed to process command packet");
                 }
             }
-            break;
-
-        case BLE_EVENT_SERVICE_STARTED:
-            BSW_LOGI(TAG, "BLE Service started");
             break;
 
         default:
