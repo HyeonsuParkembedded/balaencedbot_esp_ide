@@ -272,7 +272,7 @@ esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t r
     I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0));
     
     // Write data to TX FIFO: device address + W, register address, data value
-    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1) | 0x00);  // Address + Write bit
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1));  // Address + Write bit (0)
     I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, reg_addr);
     I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, value);
     
@@ -338,7 +338,7 @@ esp_err_t i2c_read_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t re
     
     // Phase 1: Write register address
     // Write device address + W and register address to TX FIFO
-    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1) | 0x00);  // Address + Write bit
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1));  // Address + Write bit (0)
     I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, reg_addr);
     
     // Command 0: START
@@ -419,7 +419,7 @@ esp_err_t i2c_write_raw(bsw_i2c_port_t port, uint8_t device_addr, const uint8_t*
     I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
     
     // Write device address + W to FIFO
-    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1) | 0x00);
+    I2C_WRITE_REG(base, I2C_DATA_REG_OFFSET, (device_addr << 1));  // Write bit is 0
     
     // Write data bytes to FIFO (up to 31 bytes, 1 for address)
     size_t fifo_capacity = 31;  // 32-byte FIFO - 1 for address

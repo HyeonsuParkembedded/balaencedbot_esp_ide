@@ -174,9 +174,8 @@ esp_err_t bsw_adc_config_channel(const adc_channel_config_t* config) {
     bsw_gpio_num_t gpio_num = config->gpio_pin;
     
     if (config->unit == BSW_ADC_UNIT_1) {
-        if (config->channel < BSW_ADC_CHANNEL_MAX) {
-            gpio_num = adc1_gpio_map[config->channel];
-        }
+        // Channel range already validated above (line 162)
+        gpio_num = adc1_gpio_map[config->channel];
     }
     
     // Configure GPIO for ADC (analog input)

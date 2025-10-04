@@ -245,9 +245,9 @@ void* bsw_malloc_bitwise(size_t size) {
     
     // 사용 가능한 블록 찾기 (32개 블록까지 지원)
     for (int i = 0; i < 32 && i < BSW_MEMORY_BLOCKS; i++) {
-        if (!(g_bsw_memory_bitmap & (1 << i))) {
+        if (!(g_bsw_memory_bitmap & (1U << i))) {
             // 블록 할당 마킹
-            g_bsw_memory_bitmap |= (1 << i);
+            g_bsw_memory_bitmap |= (1U << i);
             return &g_bsw_memory_pool[i * BSW_MEMORY_BLOCK_SIZE];
         }
     }

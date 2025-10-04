@@ -49,15 +49,15 @@
 #define TIMER_INT_ST_REG_OFFSET   0x00A0
 #define TIMER_INT_CLR_REG_OFFSET  0x00A4
 
-// 타이머 설정 레지스터 비트 필드
-#define TIMER_EN_BIT              (1 << 31)  ///< 타이머 활성화
-#define TIMER_INCREASE_BIT        (1 << 30)  ///< 증가 모드
-#define TIMER_AUTORELOAD_BIT      (1 << 29)  ///< 자동 리로드
+// 타이머 설정 레지스터 비트 필드 (unsigned to prevent undefined behavior)
+#define TIMER_EN_BIT              (1U << 31)  ///< 타이머 활성화
+#define TIMER_INCREASE_BIT        (1U << 30)  ///< 증가 모드
+#define TIMER_AUTORELOAD_BIT      (1U << 29)  ///< 자동 리로드
 #define TIMER_DIVIDER_SHIFT       13         ///< 분주기 시프트
 #define TIMER_DIVIDER_MASK        0xFFFF     ///< 분주기 마스크
-#define TIMER_EDGE_INT_EN_BIT     (1 << 12)  ///< 엣지 인터럽트 활성화
-#define TIMER_LEVEL_INT_EN_BIT    (1 << 11)  ///< 레벨 인터럽트 활성화
-#define TIMER_ALARM_EN_BIT        (1 << 10)  ///< 알람 활성화
+#define TIMER_EDGE_INT_EN_BIT     (1U << 12)  ///< 엣지 인터럽트 활성화
+#define TIMER_LEVEL_INT_EN_BIT    (1U << 11)  ///< 레벨 인터럽트 활성화
+#define TIMER_ALARM_EN_BIT        (1U << 10)  ///< 알람 활성화
 
 // 타이머 레지스터 직접 액세스 매크로
 #define TIMER_GROUP_REG_BASE(group)  ((group) == 0 ? TIMER_GROUP0_BASE_ADDR : TIMER_GROUP1_BASE_ADDR)

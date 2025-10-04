@@ -118,7 +118,7 @@ bool ble_stop_advertising(void);
 /**
  * @brief Send data (Notify)
  */
-bool ble_send_data(ble_conn_handle_t conn_handle, ble_char_handle_t char_handle, const uint8_t* data, size_t len);
+bool ble_send_data(ble_conn_handle_t conn_handle, ble_char_handle_t char_handle, const uint8_t* data, size_t length);
 
 /**
  * @brief Create 16-bit UUID

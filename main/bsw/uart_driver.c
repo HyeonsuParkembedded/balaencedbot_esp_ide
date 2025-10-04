@@ -136,7 +136,7 @@ int uart_read_data(bsw_uart_num_t port, uint8_t* data, size_t max_len, uint32_t 
         return -1;
     }
     
-    if (uart_configs[port].use_hardware && port < BSW_UART_SOFTWARE) {
+    if (port < BSW_UART_SOFTWARE && uart_configs[port].use_hardware) {
         // 하드웨어 UART 직접 레지스터 읽기
         int bytes_read = 0;
         uint32_t start_time = bsw_get_time_ms();
@@ -193,7 +193,7 @@ int uart_write_data(bsw_uart_num_t port, const uint8_t* data, size_t len) {
         return -1;
     }
     
-    if (uart_configs[port].use_hardware && port < BSW_UART_SOFTWARE) {
+    if (port < BSW_UART_SOFTWARE && uart_configs[port].use_hardware) {
         // 하드웨어 UART 직접 레지스터 쓰기
         int bytes_written = 0;
         
@@ -356,7 +356,7 @@ esp_err_t uart_driver_deinit(bsw_uart_num_t port) {
     }
     
     // 하드웨어 UART 비활성화
-    if (uart_configs[port].use_hardware && port < BSW_UART_SOFTWARE) {
+    if (port < BSW_UART_SOFTWARE && uart_configs[port].use_hardware) {
         UART_REG_CLEAR_BITS(port, UART_CONF0_REG_OFFSET, (1 << 20)); // UART 비활성화
     }
     
