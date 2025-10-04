@@ -84,7 +84,6 @@ typedef struct {
 // 하드웨어 레지스터 직접 주소 (ESP32-C6 Technical Reference Manual 기준)
 // ESP32-C6 GPIO 베이스 주소: 0x60004000 (TRM Chapter 6)
 #define GPIO_BASE_ADDR      0x60004000UL
-#define IO_MUX_BASE         0x60090000UL
 
 // BSW GPIO 레지스터 오프셋 주소들 (ESP32-C6 TRM 정확한 오프셋)
 #define BSW_GPIO_OUT_REG        (GPIO_BASE_ADDR + 0x0004)    ///< GPIO 출력 레지스터
@@ -97,12 +96,17 @@ typedef struct {
 #define BSW_GPIO_PIN_CONFIG_REG_BASE_OFFSET 0x0074           ///< GPIO 핀 설정 레지스터 베이스 오프셋
 
 // 핀(n)에 대한 설정 레지스터 주소 계산 매크로 (TRM 기반)
+// ESP32-C6에서 GPIO_PINn_REG는 모든 핀 설정을 통합 관리합니다.
 #define GPIO_PIN_N_REG(n) (GPIO_BASE_ADDR + BSW_GPIO_PIN_CONFIG_REG_BASE_OFFSET + ((n) * 4))
 
-// 핀 설정 비트 필드 정의 (ESP32-C6 TRM 기준)
-#define GPIO_PIN_PAD_DRIVER_BIT   (1U << 2)  ///< 오픈 드레인 제어 (비트 2)
-#define GPIO_PIN_PULLUP_BIT       (1U << 7)  ///< 풀업 활성화 (비트 7)
-#define GPIO_PIN_PULLDOWN_BIT     (1U << 8)  ///< 풀다운 활성화 (비트 8)
+// GPIO_PINn_REG 비트 필드 정의 (ESP32-C6 TRM Chapter 6.4.6 기준)
+// 이 레지스터 하나로 드라이브 강도, 오픈 드레인, 풀업/풀다운, 슬루율 등을 모두 제어
+#define GPIO_PIN_DRIVE_STRENGTH_MASK (0x3U << 0)   ///< 드라이브 강도 (비트 1:0, FUN_DRV)
+#define GPIO_PIN_DRIVE_STRENGTH_SHIFT 0
+#define GPIO_PIN_PAD_DRIVER_BIT   (1U << 2)        ///< 오픈 드레인 제어 (비트 2)
+#define GPIO_PIN_PULLUP_BIT       (1U << 7)        ///< 풀업 활성화 (비트 7, FUN_WPU)
+#define GPIO_PIN_PULLDOWN_BIT     (1U << 8)        ///< 풀다운 활성화 (비트 8, FUN_WPD)
+#define GPIO_PIN_SLEW_RATE_BIT    (1U << 9)        ///< 슬루 레이트 (비트 9, FUN_SLP_SEL)
 
 /**
  * @note ESP-IDF의 REG_WRITE(), REG_READ() 매크로를 사용합니다.

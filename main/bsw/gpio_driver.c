@@ -292,89 +292,99 @@ void bsw_gpio_raw_toggle_bits(uint32_t reg_addr, uint32_t bit_mask) {
 }
 
 /**
- * @brief IO_MUX 직접 제어를 통한 GPIO 설정 (순수 비트연산)
+ * @brief GPIO 핀 설정 (ESP32-C6 TRM 기반 - GPIO_PINn_REG 사용)
  * 
  * @param gpio_num GPIO 핀 번호
- * @param func_sel 기능 선택 (0=GPIO, 1-5=다른 기능들)
+ * @param func_sel 기능 선택 (0-7) - 사용되지 않음 (IO_MUX는 별도 레지스터)
  * @param pullup 풀업 활성화
  * @param pulldown 풀다운 활성화
+ * 
+ * @note ESP32-C6에서는 풀업/풀다운이 GPIO_PINn_REG에서 제어됩니다.
+ *       IO_MUX 기능 선택은 0x60092000 영역의 별도 레지스터입니다.
+ *       이 함수는 GPIO_PINn_REG만 제어합니다.
  */
 void bsw_gpio_configure_iomux(bsw_gpio_num_t gpio_num, uint32_t func_sel, bool pullup, bool pulldown) {
     if (gpio_num >= GPIO_PIN_COUNT) return;
     
-    // IO_MUX 레지스터 주소 계산 (ESP32-C6 기준)
-    uint32_t iomux_reg_addr = IO_MUX_BASE + (gpio_num * 4);
+    // ESP32-C6: GPIO_PINn_REG를 사용 (통합 레지스터)
+    uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     
     // 현재 값 읽기
-    uint32_t reg_val = bsw_gpio_raw_read_reg(iomux_reg_addr);
+    uint32_t reg_val = REG_READ(pin_reg_addr);
     
-    // 기능 선택 설정 (비트 2:0)
-    reg_val = (reg_val & ~0x7) | (func_sel & 0x7);
-    
-    // 풀업 설정 (비트 7)
+    // 풀업 설정 (비트 7, FUN_WPU)
     if (pullup) {
-        reg_val |= (1U << 7);
+        reg_val |= GPIO_PIN_PULLUP_BIT;
     } else {
-        reg_val &= ~(1U << 7);
+        reg_val &= ~GPIO_PIN_PULLUP_BIT;
     }
     
-    // 풀다운 설정 (비트 8)
+    // 풀다운 설정 (비트 8, FUN_WPD)
     if (pulldown) {
-        reg_val |= (1U << 8);
+        reg_val |= GPIO_PIN_PULLDOWN_BIT;
     } else {
-        reg_val &= ~(1U << 8);
+        reg_val &= ~GPIO_PIN_PULLDOWN_BIT;
     }
     
     // 레지스터에 쓰기
-    bsw_gpio_raw_write_reg(iomux_reg_addr, reg_val);
+    REG_WRITE(pin_reg_addr, reg_val);
 }
 
 /**
- * @brief GPIO 드라이브 강도 설정 (순수 비트연산)
+ * @brief GPIO 드라이브 강도 설정 (ESP32-C6 TRM 기반)
  * 
  * @param gpio_num GPIO 핀 번호
- * @param strength 드라이브 강도 (0-3: 약함~강함)
+ * @param strength 드라이브 강도 (0-3: 5mA, 10mA, 20mA, 40mA)
+ * 
+ * @note ESP32-C6 TRM Chapter 6.4.6: GPIO_PINn_REG의 비트 1:0 (FUN_DRV)
+ *       - 0: ~5mA
+ *       - 1: ~10mA
+ *       - 2: ~20mA
+ *       - 3: ~40mA
  */
 void bsw_gpio_set_drive_strength(bsw_gpio_num_t gpio_num, uint8_t strength) {
     if (gpio_num >= GPIO_PIN_COUNT || strength > 3) return;
     
-    // IO_MUX 레지스터 주소 계산
-    uint32_t iomux_reg_addr = IO_MUX_BASE + (gpio_num * 4);
+    // ESP32-C6: GPIO_PINn_REG 사용 (통합 레지스터)
+    uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     
     // 현재 값 읽기
-    uint32_t reg_val = bsw_gpio_raw_read_reg(iomux_reg_addr);
+    uint32_t reg_val = REG_READ(pin_reg_addr);
     
-    // 드라이브 강도 설정 (비트 11:10)
-    reg_val = (reg_val & ~(0x3 << 10)) | ((strength & 0x3) << 10);
+    // 드라이브 강도 설정 (비트 1:0, FUN_DRV)
+    reg_val = (reg_val & ~GPIO_PIN_DRIVE_STRENGTH_MASK) | 
+              ((strength & 0x3) << GPIO_PIN_DRIVE_STRENGTH_SHIFT);
     
     // 레지스터에 쓰기
-    bsw_gpio_raw_write_reg(iomux_reg_addr, reg_val);
+    REG_WRITE(pin_reg_addr, reg_val);
 }
 
 /**
- * @brief GPIO 슬루 레이트 설정 (순수 비트연산)
+ * @brief GPIO 슬루 레이트 설정 (ESP32-C6 TRM 기반)
  * 
  * @param gpio_num GPIO 핀 번호
  * @param fast_slew true=빠른 슬루 레이트, false=느린 슬루 레이트
+ * 
+ * @note ESP32-C6 TRM Chapter 6.4.6: GPIO_PINn_REG의 비트 9 (FUN_SLP_SEL)
  */
 void bsw_gpio_set_slew_rate(bsw_gpio_num_t gpio_num, bool fast_slew) {
     if (gpio_num >= GPIO_PIN_COUNT) return;
     
-    // IO_MUX 레지스터 주소 계산
-    uint32_t iomux_reg_addr = IO_MUX_BASE + (gpio_num * 4);
+    // ESP32-C6: GPIO_PINn_REG 사용 (통합 레지스터)
+    uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     
     // 현재 값 읽기
-    uint32_t reg_val = bsw_gpio_raw_read_reg(iomux_reg_addr);
+    uint32_t reg_val = REG_READ(pin_reg_addr);
     
-    // 슬루 레이트 설정 (비트 9)
+    // 슬루 레이트 설정 (비트 9, FUN_SLP_SEL)
     if (fast_slew) {
-        reg_val |= (1U << 9);
+        reg_val |= GPIO_PIN_SLEW_RATE_BIT;
     } else {
-        reg_val &= ~(1U << 9);
+        reg_val &= ~GPIO_PIN_SLEW_RATE_BIT;
     }
     
     // 레지스터에 쓰기
-    bsw_gpio_raw_write_reg(iomux_reg_addr, reg_val);
+    REG_WRITE(pin_reg_addr, reg_val);
 }
 
 // BSW GPIO 인터럽트 처리 - 순수 비트연산 기반 구현
@@ -387,13 +397,21 @@ static void* gpio_isr_args[GPIO_PIN_COUNT];
 static bool isr_service_installed = false;
 
 /**
- * @brief BSW GPIO ISR 서비스 설치 (순수 비트연산 기반)
+ * @brief BSW GPIO 폴링 기반 인터럽트 서비스 설치
  * 
- * @param intr_alloc_flags 인터럽트 할당 플래그 (BSW_INTR_FLAG_*)
+ * @param intr_alloc_flags 인터럽트 할당 플래그 (현재 미사용)
  * @return esp_err_t ESP_OK 성공, ESP_FAIL 실패
  * 
- * @note 순수 비트연산 방식으로 GPIO 인터럽트를 처리합니다.
- *       HAL 라이브러리를 사용하지 않고 직접 레지스터 조작합니다.
+ * @warning 현재 구현은 소프트웨어 폴링 방식입니다! 실제 하드웨어 인터럽트가 아닙니다.
+ * @note 한계점:
+ *       - CPU가 계속 GPIO 상태를 확인해야 해서 리소스 낭비가 심함
+ *       - 폴링 주기 사이에 들어오는 매우 짧은 신호(glitch)나 빠른 펄스를 놀칠 수 있음
+ *       - 엔코더 신호 처리에는 치명적일 수 있음
+ * @todo 실제 하드웨어 인터럽트 구현 필요:
+ *       - GPIO_PINn_INT_TYPE 레지스터 설정 (인터럽트 타입: 엣지/레벨)
+ *       - GPIO_PINn_INT_ENA 레지스터 설정 (인터럽트 활성화)
+ *       - CPU 인터럽트 컨트롤러에 ISR 등록
+ *       - GPIO 인터럽트 상태 레지스터 클리어
  */
 esp_err_t bsw_gpio_install_isr_service(int intr_alloc_flags) {
     if (isr_service_installed) {
@@ -412,12 +430,16 @@ esp_err_t bsw_gpio_install_isr_service(int intr_alloc_flags) {
 }
 
 /**
- * @brief GPIO 핀에 ISR 핸들러 추가 (순수 비트연산)
+ * @brief GPIO 핀에 폴링 핸들러 추가 (소프트웨어 폴링 방식)
  * 
  * @param gpio_num GPIO 핀 번호
- * @param isr_handler 인터럽트 핸들러 함수
+ * @param isr_handler 폴링 핸들러 함수 (실제 ISR이 아님)
  * @param args 핸들러에 전달할 인자
  * @return esp_err_t ESP_OK 성공, ESP_FAIL 실패
+ * 
+ * @warning 현재 구현은 소프트웨어 폴링 방식입니다. 실제 하드웨어 인터럽트가 아닙니다.
+ * @note 함수 이름이 "isr_handler_add"이지만, 실제로는 폴링 핸들러를 등록합니다.
+ *       다른 개발자들이 오해하지 않도록 주의하세요.
  */
 esp_err_t bsw_gpio_isr_handler_add(bsw_gpio_num_t gpio_num, bsw_gpio_isr_t isr_handler, void* args) {
     if (!isr_service_installed) {
@@ -430,19 +452,18 @@ esp_err_t bsw_gpio_isr_handler_add(bsw_gpio_num_t gpio_num, bsw_gpio_isr_t isr_h
     }
     
     if (gpio_isr_handlers[gpio_num] != NULL) {
-        bsw_log_bitwise(BSW_LOG_WARN, "BSW_GPIO", "GPIO %d ISR handler already exists, replacing", gpio_num);
+        bsw_log_bitwise(BSW_LOG_WARN, "BSW_GPIO", "GPIO %d handler already exists, replacing", gpio_num);
     }
     
-    // ISR 핸들러 등록
+    // 폴링 핸들러 등록 (실제 ISR 아님!)
     gpio_isr_handlers[gpio_num] = isr_handler;
     gpio_isr_args[gpio_num] = args;
     
     // GPIO를 입력 모드로 설정
     bsw_gpio_set_direction(gpio_num, BSW_GPIO_MODE_INPUT);
     
-    // 인터럽트 타입 설정 (양쪽 엣지 - ANYEDGE)
-    // 여기서는 간단히 구현하여 폴링 방식으로 시뮬레이션
-    BSW_LOGI("BSW_GPIO", "GPIO %d ISR handler added (polling mode)", gpio_num);
+    // 경고: 현재는 폴링 방식으로 시뮬레이션됨 - 실제 인터럽트 레지스터 설정 필요
+    BSW_LOGW("BSW_GPIO", "GPIO %d polling handler added (NOT hardware interrupt!)", gpio_num);
     
     return ESP_OK;
 }
