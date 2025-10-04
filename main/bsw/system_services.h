@@ -69,10 +69,11 @@ typedef enum {
 #define BSW_SYS_REG_SET_BIT(addr, bit) (*((volatile uint32_t*)(addr)) |= (bit))
 #define BSW_SYS_REG_CLEAR_BIT(addr, bit) (*((volatile uint32_t*)(addr)) &= ~(bit))
 
-// ESP-IDF 호환성 매크로 (ESP-IDF에서 이미 정의된 경우 재정의하지 않음)
-#ifndef IRAM_ATTR
-#define IRAM_ATTR __attribute__((section(".iram1")))
-#endif
+/**
+ * @note IRAM_ATTR는 ESP-IDF esp_attr.h에서 정의됩니다.
+ *       충돌을 방지하기 위해 여기서는 정의하지 않습니다.
+ *       esp_attr.h가 include되면 자동으로 사용 가능합니다.
+ */
 
 /**
  * @defgroup BSW_SYSTEM_SERVICES BSW 시스템 서비스 추상화

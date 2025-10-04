@@ -156,7 +156,7 @@ void analyze_register_differences(void) {
     
     // 레지스터 주소 정보 출력
     bsw_log_bitwise(BSW_LOG_INFO, TAG, "레지스터 주소 정보:");
-    bsw_log_bitwise(BSW_LOG_INFO, TAG, "GPIO_BASE: 0x%08lX", GPIO_BASE);
+    bsw_log_bitwise(BSW_LOG_INFO, TAG, "GPIO_BASE_ADDR: 0x%08lX", GPIO_BASE_ADDR);
     bsw_log_bitwise(BSW_LOG_INFO, TAG, "BSW_GPIO_OUT_REG: 0x%08lX", BSW_GPIO_OUT_REG);
     BSW_LOGI(TAG, "BSW_GPIO_OUT_W1TS_REG: 0x%08lX", BSW_GPIO_OUT_W1TS_REG);
     BSW_LOGI(TAG, "BSW_GPIO_OUT_W1TC_REG: 0x%08lX", BSW_GPIO_OUT_W1TC_REG);

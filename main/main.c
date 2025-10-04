@@ -35,10 +35,10 @@
 #include "bsw/system_services.h"
 #include "bsw/i2c_driver.h"
 
-// 순수 비트연산 GPIO 제어 예제 함수들
-extern void demo_bitwise_gpio_control(void);
-extern void analyze_register_differences(void);
-extern void performance_test_bitwise_gpio(void);
+// 순수 비트연산 GPIO 제어 예제 함수들 (현재 비활성화)
+// extern void demo_bitwise_gpio_control(void);
+// extern void analyze_register_differences(void);
+// extern void performance_test_bitwise_gpio(void);
 
 #include "input/imu_sensor.h"
 #include "logic/kalman_filter.h"
@@ -503,20 +503,20 @@ static void initialize_robot(void) {
     balance_pid_set_target_velocity(&balance_pid, 0.0f);  // 정지 상태로 시작
     BSW_LOGI(TAG, "Balance PID controllers initialized with tuned parameters");
     
-    // =====[ 순수 비트연산 GPIO 제어 데모 실행 ]=====
-    BSW_LOGI(TAG, "Starting bitwise GPIO control demonstration...");
+    // =====[ 순수 비트연산 GPIO 제어 데모 실행 - 현재 비활성화 ]=====
+    // BSW_LOGI(TAG, "Starting bitwise GPIO control demonstration...");
     
-    // 1. 비트연산 GPIO 제어 데모
-    demo_bitwise_gpio_control();
+    // // 1. 비트연산 GPIO 제어 데모
+    // demo_bitwise_gpio_control();
     
-    // 2. 레지스터 제어 방식 비교 분석
-    analyze_register_differences();
+    // // 2. 레지스터 제어 방식 비교 분석
+    // analyze_register_differences();
     
-    // 3. 성능 테스트
-    performance_test_bitwise_gpio();
+    // // 3. 성능 테스트
+    // performance_test_bitwise_gpio();
     
-    BSW_LOGI(TAG, "Bitwise GPIO demonstration completed!");
-    // ================================================
+    // BSW_LOGI(TAG, "Bitwise GPIO demonstration completed!");
+    // ===============================================================
     
     // Log system health after initialization
     log_system_health();
@@ -608,7 +608,6 @@ static void balance_task(void *pvParameters) {
             float current_velocity = get_robot_velocity();
             
             // Get angular velocity from IMU
-            imu_data_t imu_data;
             if (imu_sensor_update(&imu) == ESP_OK) {
                 float gyro_rate = imu_sensor_get_gyro_y(&imu);  // Pitch angular velocity
                 

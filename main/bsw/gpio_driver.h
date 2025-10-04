@@ -30,13 +30,13 @@ extern "C" {
 typedef uint8_t bsw_gpio_num_t;
 
 /**
- * @brief BSW GPIO 모드 열거형
+ * @brief BSW GPIO 모드 열거형 (TRM 기반 오픈 드레인 모드 추가)
  */
 typedef enum {
     BSW_GPIO_MODE_DISABLE = 0,     ///< GPIO 비활성화
     BSW_GPIO_MODE_INPUT = 1,       ///< 입력 모드
-    BSW_GPIO_MODE_OUTPUT = 2,      ///< 출력 모드
-    BSW_GPIO_MODE_OUTPUT_OD = 3,   ///< 오픈 드레인 출력
+    BSW_GPIO_MODE_OUTPUT = 2,      ///< 출력 모드 (Push-Pull)
+    BSW_GPIO_MODE_OUTPUT_OD = 3,   ///< 오픈 드레인 출력 (Open Drain)
     BSW_GPIO_MODE_INPUT_OUTPUT_OD = 4, ///< 입출력 오픈 드레인
     BSW_GPIO_MODE_INPUT_OUTPUT = 5 ///< 입출력 모드
 } bsw_gpio_mode_t;
@@ -75,40 +75,57 @@ typedef struct {
 } bsw_gpio_config_t;
 
 /**
- * @brief ESP32-C6 GPIO 레지스터 직접 제어 매크로
+ * @brief ESP32-C6 GPIO 레지스터 직접 제어 매크로 (TRM 기반)
  */
 #ifndef GPIO_PIN_COUNT
 #define GPIO_PIN_COUNT 31  ///< ESP32-C6 GPIO 핀 수 (0-30)
 #endif
 
 // 하드웨어 레지스터 직접 주소 (ESP32-C6 Technical Reference Manual 기준)
-#define GPIO_BASE           0x60091000UL
+// ESP32-C6 GPIO 베이스 주소: 0x60004000 (TRM Chapter 6)
+#define GPIO_BASE_ADDR      0x60004000UL
 #define IO_MUX_BASE         0x60090000UL
 
-// BSW GPIO 레지스터 오프셋 주소들 (ESP-IDF 충돌 방지)
-#define BSW_GPIO_OUT_REG        (GPIO_BASE + 0x0004)    ///< GPIO 출력 레지스터
-#define BSW_GPIO_OUT_W1TS_REG   (GPIO_BASE + 0x0008)    ///< GPIO 출력 set 레지스터
-#define BSW_GPIO_OUT_W1TC_REG   (GPIO_BASE + 0x000C)    ///< GPIO 출력 clear 레지스터
-#define BSW_GPIO_ENABLE_REG     (GPIO_BASE + 0x0020)    ///< GPIO 출력 활성화 레지스터
-#define BSW_GPIO_ENABLE_W1TS_REG (GPIO_BASE + 0x0024)   ///< GPIO 출력 활성화 set 레지스터
-#define BSW_GPIO_ENABLE_W1TC_REG (GPIO_BASE + 0x0028)   ///< GPIO 출력 활성화 clear 레지스터
-#define BSW_GPIO_IN_REG         (GPIO_BASE + 0x003C)    ///< GPIO 입력 레지스터
+// BSW GPIO 레지스터 오프셋 주소들 (ESP32-C6 TRM 정확한 오프셋)
+#define BSW_GPIO_OUT_REG        (GPIO_BASE_ADDR + 0x0004)    ///< GPIO 출력 레지스터
+#define BSW_GPIO_OUT_W1TS_REG   (GPIO_BASE_ADDR + 0x0008)    ///< GPIO 출력 set 레지스터 (W1TS: Write 1 to Set)
+#define BSW_GPIO_OUT_W1TC_REG   (GPIO_BASE_ADDR + 0x000C)    ///< GPIO 출력 clear 레지스터 (W1TC: Write 1 to Clear)
+#define BSW_GPIO_ENABLE_REG     (GPIO_BASE_ADDR + 0x0020)    ///< GPIO 출력 활성화 레지스터
+#define BSW_GPIO_ENABLE_W1TS_REG (GPIO_BASE_ADDR + 0x0024)   ///< GPIO 출력 활성화 set 레지스터
+#define BSW_GPIO_ENABLE_W1TC_REG (GPIO_BASE_ADDR + 0x0028)   ///< GPIO 출력 활성화 clear 레지스터
+#define BSW_GPIO_IN_REG         (GPIO_BASE_ADDR + 0x003C)    ///< GPIO 입력 레지스터
+#define BSW_GPIO_PIN_CONFIG_REG_BASE_OFFSET 0x0074           ///< GPIO 핀 설정 레지스터 베이스 오프셋
+
+// 핀(n)에 대한 설정 레지스터 주소 계산 매크로 (TRM 기반)
+#define GPIO_PIN_N_REG(n) (GPIO_BASE_ADDR + BSW_GPIO_PIN_CONFIG_REG_BASE_OFFSET + ((n) * 4))
+
+// 핀 설정 비트 필드 정의 (ESP32-C6 TRM 기준)
+#define GPIO_PIN_PAD_DRIVER_BIT   (1U << 2)  ///< 오픈 드레인 제어 (비트 2)
+#define GPIO_PIN_PULLUP_BIT       (1U << 7)  ///< 풀업 활성화 (비트 7)
+#define GPIO_PIN_PULLDOWN_BIT     (1U << 8)  ///< 풀다운 활성화 (비트 8)
+
+/**
+ * @note ESP-IDF의 REG_WRITE(), REG_READ() 매크로를 사용합니다.
+ *       이 매크로들은 soc/soc.h에 정의되어 있으며, soc/gpio_reg.h를 
+ *       include하면 자동으로 포함됩니다.
+ *       충돌 방지를 위해 재정의하지 않습니다.
+ */
 
 // 순수 비트연산자 기반 레지스터 직접 조작 매크로
-#define WRITE_REG_BITS(addr, mask, value) do { \
-    uint32_t temp = (*(volatile uint32_t*)(addr) & ~(mask)) | ((value) & (mask)); \
-    *(volatile uint32_t*)(addr) = temp; \
+#define BSW_WRITE_REG_BITS(addr, mask, value) do { \
+    uint32_t temp = (REG_READ(addr) & ~(mask)) | ((value) & (mask)); \
+    REG_WRITE(addr, temp); \
 } while(0)
 
-#define SET_REG_BITS(addr, mask) do { \
-    *(volatile uint32_t*)(addr) |= (mask); \
+#define BSW_SET_REG_BITS(addr, mask) do { \
+    REG_WRITE(addr, REG_READ(addr) | (mask)); \
 } while(0)
 
-#define CLEAR_REG_BITS(addr, mask) do { \
-    *(volatile uint32_t*)(addr) &= ~(mask); \
+#define BSW_CLEAR_REG_BITS(addr, mask) do { \
+    REG_WRITE(addr, REG_READ(addr) & ~(mask)); \
 } while(0)
 
-#define READ_REG_BITS(addr, mask) ((*(volatile uint32_t*)(addr)) & (mask))
+#define BSW_READ_REG_BITS(addr, mask) (REG_READ(addr) & (mask))
 
 // 순수 비트연산 GPIO 매크로 (가장 빠른 방법)
 #define GPIO_BIT_SET(gpio_num) do { \

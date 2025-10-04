@@ -14,6 +14,7 @@
 #include "encoder_sensor.h"
 #include "../bsw/gpio_driver.h"
 #include <math.h>
+#include "esp_attr.h"
 
 static const char* ENCODER_TAG = "ENCODER_SENSOR"; ///< 로깅 태그
 

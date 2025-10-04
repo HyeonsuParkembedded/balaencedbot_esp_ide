@@ -34,13 +34,15 @@ esp_err_t bsw_gpio_init(void) {
 }
 
 /**
- * @brief 단일 GPIO 핀 설정 (직접 레지스터 제어)
+ * @brief 단일 GPIO 핀 설정 (TRM 기반 직접 레지스터 제어)
  * 
  * @param gpio_num GPIO 핀 번호
  * @param mode GPIO 모드
  * @param pull_up 풀업 활성화 여부
  * @param pull_down 풀다운 활성화 여부
  * @return ESP_OK 성공, ESP_FAIL 실패
+ * 
+ * @note ESP32-C6 TRM에 명시된 정확한 레지스터 주소와 비트 필드를 사용합니다.
  */
 esp_err_t bsw_gpio_config_pin(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode, 
                               bsw_gpio_pull_mode_t pull_up, bsw_gpio_pull_mode_t pull_down) {
@@ -49,57 +51,17 @@ esp_err_t bsw_gpio_config_pin(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode,
         return ESP_ERR_INVALID_ARG;
     }
 
-    uint32_t pin_mask = (1ULL << gpio_num);
-    
-    // GPIO 모드 설정 - 직접 레지스터 제어
-    switch (mode) {
-        case BSW_GPIO_MODE_INPUT:
-            // 입력 모드: 출력 비활성화, 입력 활성화
-            GPIO.enable_w1tc.val = pin_mask;  // 출력 비활성화
-            break;
-            
-        case BSW_GPIO_MODE_OUTPUT:
-            // 출력 모드: 출력 활성화
-            GPIO.enable_w1ts.val = pin_mask;  // 출력 활성화
-            break;
-            
-        case BSW_GPIO_MODE_INPUT_OUTPUT:
-            // 입출력 모드: 출력 활성화
-            GPIO.enable_w1ts.val = pin_mask;  // 출력 활성화
-            break;
-            
-        case BSW_GPIO_MODE_OUTPUT_OD:
-            // 오픈 드레인 출력: 출력 활성화 + 오픈 드레인 설정
-            GPIO.enable_w1ts.val = pin_mask;  // 출력 활성화
-            GPIO.pin[gpio_num].pad_driver = 1;  // 오픈 드레인 모드
-            break;
-            
-        case BSW_GPIO_MODE_DISABLE:
-        default:
-            // GPIO 비활성화
-            GPIO.enable_w1tc.val = pin_mask;  // 출력 비활성화
-            break;
+    // 방향 설정 (W1TS/W1TC + 오픈 드레인 지원)
+    esp_err_t ret = bsw_gpio_set_direction(gpio_num, mode);
+    if (ret != ESP_OK) {
+        return ret;
     }
     
-    // 풀업/풀다운 레지스터 직접 제어 (IO_MUX를 통해)
-    uint32_t io_mux_reg = GPIO_PIN_MUX_REG[gpio_num];
-    uint32_t mux_val = REG_READ(io_mux_reg);
-    
-    // 기존 풀업/풀다운 설정 클리어
-    mux_val &= ~(FUN_PU | FUN_PD);
-    
-    // 풀업 설정
-    if (pull_up == BSW_GPIO_PULLUP_ENABLE) {
-        mux_val |= FUN_PU;
+    // 풀업/풀다운 설정 (GPIO_PIN_N_REG + 비트 필드)
+    ret = bsw_gpio_set_pull_mode(gpio_num, pull_up, pull_down);
+    if (ret != ESP_OK) {
+        return ret;
     }
-    
-    // 풀다운 설정  
-    if (pull_down == BSW_GPIO_PULLDOWN_ENABLE) {
-        mux_val |= FUN_PD;
-    }
-    
-    // IO_MUX 레지스터에 설정 적용
-    REG_WRITE(io_mux_reg, mux_val);
     
     BSW_LOGI(TAG, "GPIO %d configured: mode=%d, pull_up=%d, pull_down=%d", 
              gpio_num, mode, pull_up, pull_down);
@@ -139,6 +101,8 @@ esp_err_t bsw_gpio_config(const bsw_gpio_config_t* pGPIOConfig) {
  * 
  * @param gpio_num GPIO 핀 번호
  * @return GPIO 레벨 (0 또는 1)
+ * 
+ * @note GPIO_IN_REG 레지스터를 직접 읽어 핀의 입력 레벨을 확인합니다.
  */
 int bsw_gpio_get_level(bsw_gpio_num_t gpio_num) {
     if (gpio_num >= GPIO_PIN_COUNT) {
@@ -146,16 +110,19 @@ int bsw_gpio_get_level(bsw_gpio_num_t gpio_num) {
         return 0;
     }
     
-    // GPIO 입력 레지스터에서 직접 읽기
-    return (GPIO.in.val >> gpio_num) & 0x1;
+    // GPIO 입력 레지스터에서 직접 읽기 (정확한 GPIO_IN_REG_OFFSET 사용)
+    return (REG_READ(BSW_GPIO_IN_REG) >> gpio_num) & 0x1;
 }
 
 /**
- * @brief GPIO 레벨 설정 (직접 레지스터 제어)
+ * @brief GPIO 레벨 설정 (W1TS/W1TC 레지스터 - Atomic & Thread-safe)
  * 
  * @param gpio_num GPIO 핀 번호
  * @param level 설정할 레벨 (0 또는 1)
  * @return ESP_OK 성공, ESP_FAIL 실패
+ * 
+ * @note W1TS (Write 1 to Set)와 W1TC (Write 1 to Clear) 레지스터를 사용하여
+ *       한 번의 쓰기 동작으로 특정 핀의 상태만 안전하게 변경 (Atomic operation)
  */
 esp_err_t bsw_gpio_set_level(bsw_gpio_num_t gpio_num, uint32_t level) {
     if (gpio_num >= GPIO_PIN_COUNT) {
@@ -163,24 +130,27 @@ esp_err_t bsw_gpio_set_level(bsw_gpio_num_t gpio_num, uint32_t level) {
         return ESP_ERR_INVALID_ARG;
     }
     
-    uint32_t pin_mask = (1ULL << gpio_num);
-    
-    // 레지스터 직접 제어로 GPIO 레벨 설정
+    // W1TS/W1TC 레지스터 직접 제어로 GPIO 레벨 설정
     if (level) {
-        GPIO.out_w1ts.val = pin_mask;  // Set 레지스터로 HIGH
+        // W1TS (Write 1 to Set) 레지스터 사용 -> Atomic & Thread-safe
+        REG_WRITE(BSW_GPIO_OUT_W1TS_REG, (1ULL << gpio_num));
     } else {
-        GPIO.out_w1tc.val = pin_mask;  // Clear 레지스터로 LOW
+        // W1TC (Write 1 to Clear) 레지스터 사용 -> Atomic & Thread-safe
+        REG_WRITE(BSW_GPIO_OUT_W1TC_REG, (1ULL << gpio_num));
     }
     
     return ESP_OK;
 }
 
 /**
- * @brief GPIO 방향 설정 (직접 레지스터 제어)
+ * @brief GPIO 방향 설정 (W1TS/W1TC + 오픈 드레인 모드 지원)
  * 
  * @param gpio_num GPIO 핀 번호
  * @param mode GPIO 모드
  * @return ESP_OK 성공, ESP_FAIL 실패
+ * 
+ * @note W1TS/W1TC 레지스터로 입/출력 방향을 설정하고,
+ *       PAD_DRIVER 비트를 제어하여 오픈 드레인 모드를 지원합니다.
  */
 esp_err_t bsw_gpio_set_direction(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode) {
     if (gpio_num >= GPIO_PIN_COUNT) {
@@ -188,20 +158,45 @@ esp_err_t bsw_gpio_set_direction(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode) 
         return ESP_ERR_INVALID_ARG;
     }
     
-    uint32_t pin_mask = (1ULL << gpio_num);
+    uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
+    uint32_t reg_val = REG_READ(pin_reg_addr);
     
     switch (mode) {
         case BSW_GPIO_MODE_INPUT:
-            GPIO.enable_w1tc.val = pin_mask;  // 출력 비활성화
+            // 입력 모드: 출력 비활성화
+            REG_WRITE(BSW_GPIO_ENABLE_W1TC_REG, (1ULL << gpio_num));
             break;
+            
         case BSW_GPIO_MODE_OUTPUT:
-        case BSW_GPIO_MODE_INPUT_OUTPUT:
-        case BSW_GPIO_MODE_OUTPUT_OD:
-            GPIO.enable_w1ts.val = pin_mask;  // 출력 활성화
+            // 출력 모드 (Push-Pull): 출력 활성화, 오픈 드레인 비활성화
+            REG_WRITE(BSW_GPIO_ENABLE_W1TS_REG, (1ULL << gpio_num));
+            reg_val &= ~GPIO_PIN_PAD_DRIVER_BIT; // 오픈 드레인 비활성화
+            REG_WRITE(pin_reg_addr, reg_val);
             break;
+            
+        case BSW_GPIO_MODE_OUTPUT_OD:
+            // 오픈 드레인 출력: 출력 활성화, PAD_DRIVER 비트 설정
+            REG_WRITE(BSW_GPIO_ENABLE_W1TS_REG, (1ULL << gpio_num));
+            reg_val |= GPIO_PIN_PAD_DRIVER_BIT; // 오픈 드레인 활성화
+            REG_WRITE(pin_reg_addr, reg_val);
+            break;
+            
+        case BSW_GPIO_MODE_INPUT_OUTPUT:
+        case BSW_GPIO_MODE_INPUT_OUTPUT_OD:
+            // 입출력 모드: 출력 활성화
+            REG_WRITE(BSW_GPIO_ENABLE_W1TS_REG, (1ULL << gpio_num));
+            if (mode == BSW_GPIO_MODE_INPUT_OUTPUT_OD) {
+                reg_val |= GPIO_PIN_PAD_DRIVER_BIT; // 오픈 드레인 활성화
+            } else {
+                reg_val &= ~GPIO_PIN_PAD_DRIVER_BIT; // 오픈 드레인 비활성화
+            }
+            REG_WRITE(pin_reg_addr, reg_val);
+            break;
+            
         case BSW_GPIO_MODE_DISABLE:
         default:
-            GPIO.enable_w1tc.val = pin_mask;  // 출력 비활성화
+            // GPIO 비활성화: 출력 비활성화
+            REG_WRITE(BSW_GPIO_ENABLE_W1TC_REG, (1ULL << gpio_num));
             break;
     }
     
@@ -209,12 +204,15 @@ esp_err_t bsw_gpio_set_direction(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode) 
 }
 
 /**
- * @brief GPIO 풀업/풀다운 설정 (직접 레지스터 제어)
+ * @brief GPIO 풀업/풀다운 설정 (GPIO_PIN_N_REG + 비트 필드)
  * 
  * @param gpio_num GPIO 핀 번호
  * @param pull_up 풀업 활성화 여부
  * @param pull_down 풀다운 활성화 여부
  * @return ESP_OK 성공, ESP_FAIL 실패
+ * 
+ * @note 정의된 GPIO_PIN_PULLUP_BIT, GPIO_PIN_PULLDOWN_BIT 매크로를 사용하여
+ *       명확하고 안전하게 풀업/풀다운 저항을 설정합니다.
  */
 esp_err_t bsw_gpio_set_pull_mode(bsw_gpio_num_t gpio_num, bsw_gpio_pull_mode_t pull_up, bsw_gpio_pull_mode_t pull_down) {
     if (gpio_num >= GPIO_PIN_COUNT) {
@@ -222,22 +220,22 @@ esp_err_t bsw_gpio_set_pull_mode(bsw_gpio_num_t gpio_num, bsw_gpio_pull_mode_t p
         return ESP_ERR_INVALID_ARG;
     }
     
-    // IO_MUX 레지스터를 통한 풀업/풀다운 설정
-    uint32_t io_mux_reg = GPIO_PIN_MUX_REG[gpio_num];
-    uint32_t mux_val = REG_READ(io_mux_reg);
+    // GPIO_PIN_N_REG 레지스터를 통한 풀업/풀다운 설정
+    uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
+    uint32_t reg_val = REG_READ(pin_reg_addr);
     
-    // 기존 풀업/풀다운 설정 클리어
-    mux_val &= ~(FUN_PU | FUN_PD);
+    // 기존 풀업/풀다운 설정 클리어 (비트 필드 메크로 사용)
+    reg_val &= ~(GPIO_PIN_PULLUP_BIT | GPIO_PIN_PULLDOWN_BIT);
     
     // 새로운 설정 적용
     if (pull_up == BSW_GPIO_PULLUP_ENABLE) {
-        mux_val |= FUN_PU;
+        reg_val |= GPIO_PIN_PULLUP_BIT;
     }
     if (pull_down == BSW_GPIO_PULLDOWN_ENABLE) {
-        mux_val |= FUN_PD;
+        reg_val |= GPIO_PIN_PULLDOWN_BIT;
     }
     
-    REG_WRITE(io_mux_reg, mux_val);
+    REG_WRITE(pin_reg_addr, reg_val);
     
     return ESP_OK;
 }
@@ -269,7 +267,7 @@ uint32_t bsw_gpio_raw_read_reg(uint32_t reg_addr) {
  * @param bit_mask 설정할 비트 마스크
  */
 void bsw_gpio_raw_set_bits(uint32_t reg_addr, uint32_t bit_mask) {
-    SET_REG_BITS(reg_addr, bit_mask);
+    BSW_SET_REG_BITS(reg_addr, bit_mask);
 }
 
 /**
@@ -279,7 +277,7 @@ void bsw_gpio_raw_set_bits(uint32_t reg_addr, uint32_t bit_mask) {
  * @param bit_mask 클리어할 비트 마스크
  */
 void bsw_gpio_raw_clear_bits(uint32_t reg_addr, uint32_t bit_mask) {
-    CLEAR_REG_BITS(reg_addr, bit_mask);
+    BSW_CLEAR_REG_BITS(reg_addr, bit_mask);
 }
 
 /**

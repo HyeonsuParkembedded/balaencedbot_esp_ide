@@ -1,23 +1,23 @@
 /**
  * @file pwm_driver.c
- * @brief ESP32-C6 타이머 레지스터 직접 제어 PWM 드라이버 구현 파일
+ * @brief ESP32-C6 Register Direct Control PWM Driver Implementation
  * 
- * 순수 비트연산과 레지스터 직접 조작을 통한 고성능 PWM 구현입니다.
- * HAL 드    bsw_log_bitwise(BSW_LOG_INFO, PWM_TAG, "Bitwise PWM driver initialized (1us precision, max %d channels)", PWM_CHANNEL_MAX);이버 없이 하드웨어를 직접 제어하여 최고 성능을 달성합니다.
+ * High-performance PWM implementation using pure bitwise operations and direct register manipulation.
+ * Achieves maximum performance by directly controlling hardware without HAL drivers.
  * 
- * 구현 특징:
- * - ESP32-C6 타이머 레지스터 직접 제어
- * - GPIO 레지스터 비트연산 직접 조작
- * - HAL 의존성 완전 제거
- * - 1000단계 해상도 (0.1% 단위)
- * - 사용자 정의 주파수 지원
- * - 하드웨어 타이머 레지스터 ISR 기반 정밀 제어
- * - 최대 8채널 동시 지원
- * - 1μs 정밀도 비트연산 타이머
+ * Features:
+ * - ESP32-C6 timer register direct control
+ * - GPIO register bitwise operation direct manipulation
+ * - Complete removal of HAL dependencies
+ * - 1000-step resolution (0.1% unit)
+ * - User-defined frequency support
+ * - Hardware timer register ISR-based precise control
+ * - Maximum 8 channels simultaneous support
+ * - 1us precision bitwise timer
  * 
  * @author Hyeonsu Park, Suyong Kim
  * @date 2025-10-01
- * @version 4.0 (비트연산 직접 제어 PWM)
+ * @version 4.0 (Bitwise Direct Control PWM)
  */
 
 #include "pwm_driver.h"
@@ -26,6 +26,7 @@
 #include "system_services.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_attr.h"
 #include "soc/timer_group_reg.h"
 #include "soc/interrupt_reg.h"
 
@@ -45,11 +46,13 @@ static volatile bool timer_interrupt_flag = false;
 #define PWM_TIMER_DIVIDER  80   // 80MHz / 80 = 1MHz (1μs 분해능)
 
 /**
- * @brief PWM 타이머 ISR 콜백 함수 (순수 비트연산)
+ * @brief PWM timer ISR callback function (Pure bitwise operation)
  * 
- * 1μs마다 호출되어 각 채널의 PWM 상태를 업데이트합니다.
- * ESP32-C6 하드웨어 타이머 인터럽트에서 직접 호출됩니다.
+ * Called every 1us to update PWM status of each channel.
+ * Directly called from ESP32-C6 hardware timer interrupt.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 static void IRAM_ATTR pwm_timer_isr_handler(void) {
     // 인터럽트 클리어
     PWM_TIMER_FAST_CLEAR_INT(PWM_TIMER_GROUP, PWM_TIMER_NUM);
@@ -76,6 +79,7 @@ static void IRAM_ATTR pwm_timer_isr_handler(void) {
     // 타이머 카운터 증가 (1μs 단위)
     timer_counter++;
 }
+#pragma GCC diagnostic pop
 
 /**
  * @brief PWM 드라이버 전역 초기화 구현 (순수 비트연산)
