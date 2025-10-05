@@ -12,105 +12,89 @@
 
 #include "battery_sensor.h"
 #include "../bsw/system_services.h"
+#include "../bsw/adc_driver.h"
 #include "../config.h"
 #include "esp_log.h"
 
 static const char* TAG = "BATTERY_SENSOR";
 
 /**
- * @brief 배터리 센서 초기화
+ * @brief 배터리 센서 초기화 (BSW ADC 드라이버 사용)
  */
-esp_err_t battery_sensor_init(battery_sensor_t* battery, adc_channel_t channel, 
-                             float r1_kohm, float r2_kohm) {
+esp_err_t battery_sensor_init(battery_sensor_t* battery, 
+                             bsw_adc_unit_t adc_unit,
+                             bsw_adc_channel_t adc_channel,
+                             bsw_gpio_num_t gpio_pin,
+                             float r1_kohm, 
+                             float r2_kohm) {
     if (!battery) {
         BSW_LOGE(TAG, "Invalid battery sensor pointer");
         return ESP_ERR_INVALID_ARG;
     }
 
     memset(battery, 0, sizeof(battery_sensor_t));
-    battery->channel = channel;
     
     // 전압 분배비 계산: Vout = Vin * R2/(R1+R2)
     // 따라서 Vin = Vout * (R1+R2)/R2
     battery->voltage_divider_ratio = (r1_kohm + r2_kohm) / r2_kohm;
+    battery->adc_unit = adc_unit;
+    battery->adc_channel = adc_channel;
+    battery->attenuation = BSW_ADC_ATTEN_DB_11;  // 0~3.3V 범위 (배터리 전압 측정에 적합)
     
-    // ADC 설정
-    adc_oneshot_unit_init_cfg_t init_config = {
-        .unit_id = ADC_UNIT_1,
-        .ulp_mode = ADC_ULP_MODE_DISABLE,
-    };
-    
-    esp_err_t ret = adc_oneshot_new_unit(&init_config, &battery->adc_handle);
-    if (ret != ESP_OK) {
-        BSW_LOGE(TAG, "Failed to initialize ADC unit");
+    // BSW ADC 초기화
+    esp_err_t ret = bsw_adc_init();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {  // 이미 초기화된 경우는 OK
+        BSW_LOGE(TAG, "Failed to initialize BSW ADC: %s", esp_err_to_name(ret));
         return ret;
     }
-
+    
     // ADC 채널 설정
-    adc_oneshot_chan_cfg_t config = {
-        .bitwidth = ADC_BITWIDTH_DEFAULT,
-        .atten = ADC_ATTEN_DB_12,  // 0~3.1V 범위
+    adc_channel_config_t adc_config = {
+        .unit = adc_unit,
+        .channel = adc_channel,
+        .attenuation = battery->attenuation,
+        .gpio_pin = gpio_pin
     };
     
-    ret = adc_oneshot_config_channel(battery->adc_handle, channel, &config);
+    ret = bsw_adc_config_channel(&adc_config);
     if (ret != ESP_OK) {
-        bsw_log_bitwise(BSW_LOG_ERROR, TAG, "Failed to configure ADC channel");
-        adc_oneshot_del_unit(battery->adc_handle);
+        BSW_LOGE(TAG, "Failed to configure ADC channel: %s", esp_err_to_name(ret));
         return ret;
-    }
-
-    // ADC 교정 핸들 생성
-    adc_cali_curve_fitting_config_t cali_config = {
-        .unit_id = ADC_UNIT_1,
-        .chan = channel,
-        .atten = ADC_ATTEN_DB_12,
-        .bitwidth = ADC_BITWIDTH_DEFAULT,
-    };
-    
-    ret = adc_cali_create_scheme_curve_fitting(&cali_config, &battery->adc_cali_handle);
-    if (ret != ESP_OK) {
-        BSW_LOGW(TAG, "ADC calibration failed, using raw values");
-        battery->adc_cali_handle = NULL;
     }
 
     battery->initialized = true;
     battery->last_voltage = 0.0f;
     battery->battery_level = BATTERY_LEVEL_NORMAL;
     
-    BSW_LOGI(TAG, "Battery sensor initialized - Channel: %d", 
-             (int)channel);
+    BSW_LOGI(TAG, "Battery sensor initialized with BSW ADC - Unit: %d, Channel: %d, GPIO: %d, Atten: 11dB", 
+             adc_unit, adc_channel, gpio_pin);
     
     return ESP_OK;
 }
 
 /**
- * @brief 배터리 전압 측정
+ * @brief 배터리 전압 측정 (BSW ADC 드라이버 사용)
  */
 float battery_sensor_read_voltage(battery_sensor_t* battery) {
     if (!battery || !battery->initialized) {
-        bsw_log_bitwise(BSW_LOG_ERROR, TAG, "Battery sensor not initialized");
+        BSW_LOGE(TAG, "Battery sensor not initialized");
         return -1.0f;
     }
 
-    int adc_raw = 0;
-    esp_err_t ret = adc_oneshot_read(battery->adc_handle, battery->channel, &adc_raw);
+    // BSW ADC로 raw 값 읽기
+    uint32_t adc_raw = 0;
+    esp_err_t ret = bsw_adc_get_raw(battery->adc_unit, battery->adc_channel, &adc_raw);
     if (ret != ESP_OK) {
-        bsw_log_bitwise(BSW_LOG_ERROR, TAG, "ADC read failed");
+        BSW_LOGE(TAG, "BSW ADC read failed: %s", esp_err_to_name(ret));
         return -1.0f;
     }
 
-    int voltage_mv = 0;
-    if (battery->adc_cali_handle != NULL) {
-        // 교정된 값 사용
-        ret = adc_cali_raw_to_voltage(battery->adc_cali_handle, adc_raw, &voltage_mv);
-        if (ret != ESP_OK) {
-            bsw_log_bitwise(BSW_LOG_ERROR, TAG, "ADC calibration failed");
-            return -1.0f;
-        }
-    } else {
-        // 교정되지 않은 raw 값 사용 (대략적인 변환)
-        // ADC_ATTEN_DB_11에서 대략 3.1V/4095 = 0.757mV per LSB
-        voltage_mv = (adc_raw * 3100) / 4095;
+    // BSW ADC raw 값을 전압(mV)으로 변환
+    uint32_t voltage_mv = 0;
+    ret = bsw_adc_raw_to_voltage(adc_raw, battery->attenuation, &voltage_mv);
+    if (ret != ESP_OK) {
+        BSW_LOGE(TAG, "BSW ADC voltage conversion failed: %s", esp_err_to_name(ret));
+        return -1.0f;
     }
 
     // 전압 분배비를 적용하여 실제 배터리 전압 계산
@@ -192,25 +176,18 @@ bool battery_sensor_is_critical(battery_sensor_t* battery) {
 }
 
 /**
- * @brief 배터리 센서 해제
+ * @brief 배터리 센서 해제 (BSW ADC는 전역 리소스이므로 개별 해제 불필요)
  */
 esp_err_t battery_sensor_deinit(battery_sensor_t* battery) {
     if (!battery) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (battery->adc_cali_handle) {
-        adc_cali_delete_scheme_curve_fitting(battery->adc_cali_handle);
-        battery->adc_cali_handle = NULL;
-    }
-
-    if (battery->adc_handle) {
-        adc_oneshot_del_unit(battery->adc_handle);
-        battery->adc_handle = NULL;
-    }
-
     battery->initialized = false;
-    BSW_LOGI(TAG, "Battery sensor deinitialized");
+    battery->last_voltage = 0.0f;
+    battery->battery_level = BATTERY_LEVEL_CRITICAL;
+    
+    BSW_LOGI(TAG, "Battery sensor deinitialized (BSW ADC remains active)");
     
     return ESP_OK;
 }

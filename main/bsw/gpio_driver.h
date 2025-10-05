@@ -6,8 +6,8 @@
  * ESP32-C6의 GPIO 레지스터를 직접 조작하여 빠른 속도와 정밀한 제어를 제공합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-10-01
- * @version 2.0
+ * @date 2025-10-04
+ * @version 3.0 (FreeRTOS Multitasking Safe)
  */
 
 #ifndef BSW_GPIO_DRIVER_H
@@ -77,10 +77,8 @@ typedef struct {
 /**
  * @brief ESP32-C6 GPIO 레지스터 직접 제어 매크로 (TRM 기반)
  */
-#ifndef GPIO_PIN_COUNT
-#define GPIO_PIN_COUNT 31  ///< ESP32-C6 GPIO 물리적 핀 수 (0-30)
-#endif
-
+// BSW 전용 GPIO 매크로 (ESP-IDF의 GPIO_PIN_COUNT와 충돌 방지)
+#define BSW_GPIO_PIN_COUNT 31  ///< ESP32-C6 GPIO 물리적 핀 수 (0-30)
 #define GPIO_USABLE_PIN_COUNT 26  ///< 사용 가능한 GPIO 핀 수 (0-25, GPIO 26-30은 Flash 전용)
 #define GPIO_FLASH_PIN_START 26   ///< Flash 전용 핀 시작 번호
 
@@ -88,6 +86,9 @@ typedef struct {
  * @warning ESP32-C6에서 GPIO 26-30은 내부 Flash 연결에 사용되며,
  *          사용자가 임의로 사용할 수 없습니다. 이 핀들에 접근 시도 시
  *          ESP_ERR_NOT_SUPPORTED 에러가 반환됩니다.
+ * 
+ * @note BSW_GPIO_PIN_COUNT는 BSW 드라이버 전용 매크로입니다.
+ *       ESP-IDF의 GPIO_PIN_COUNT와는 별개로 사용됩니다.
  */
 
 // 하드웨어 레지스터 직접 주소 (ESP32-C6 Technical Reference Manual 기준)
@@ -260,6 +261,7 @@ typedef void (*bsw_gpio_isr_t)(void* arg);
 
 // BSW GPIO 함수 선언 - 직접 레지스터 제어 방식
 esp_err_t bsw_gpio_init(void);
+esp_err_t bsw_gpio_deinit(void);
 esp_err_t bsw_gpio_config_pin(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode, 
                               bsw_gpio_pull_mode_t pull_up, bsw_gpio_pull_mode_t pull_down);
 esp_err_t bsw_gpio_config(const bsw_gpio_config_t* pGPIOConfig);

@@ -14,15 +14,20 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 
 // BSW 정적 메모리 풀 (비트연산 기반)
 #define BSW_MEMORY_POOL_SIZE    8192    // 8KB 정적 메모리 풀
 #define BSW_MEMORY_BLOCK_SIZE   64      // 64바이트 블록 단위
-#define BSW_MEMORY_BLOCKS       (BSW_MEMORY_POOL_SIZE / BSW_MEMORY_BLOCK_SIZE)
+#define BSW_MEMORY_BLOCKS       (BSW_MEMORY_POOL_SIZE / BSW_MEMORY_BLOCK_SIZE)  // 128개 블록
+#define BSW_BITMAP_WORDS        ((BSW_MEMORY_BLOCKS + 31) / 32)  // 4개 워드 (128비트)
 
 static uint8_t g_bsw_memory_pool[BSW_MEMORY_POOL_SIZE];
-static uint32_t g_bsw_memory_bitmap = 0;  // 블록 할당 상태 (32개 블록)
+static uint32_t g_bsw_memory_bitmap[BSW_BITMAP_WORDS] = {0};  // 128비트 비트맵 (4×32비트)
 static bool g_bsw_memory_initialized = false;
+static SemaphoreHandle_t g_bsw_memory_mutex = NULL;  // 메모리 할당 뮤텍스
 
 // BSW 시스템 타이머 상태
 static uint32_t g_bsw_timer_base_ms = 0;
@@ -34,10 +39,12 @@ static bool g_bsw_timer_initialized = false;
 #define BSW_UART0_STATUS        (BSW_UART0_BASE + 0x01C)
 #define BSW_UART0_CONF0         (BSW_UART0_BASE + 0x020)
 #define BSW_UART0_TXFIFO_FULL   (1 << 16)
+static SemaphoreHandle_t g_bsw_uart_mutex = NULL;  // UART 출력 뮤텍스
 
 // 내부 함수 선언
 static void bsw_init_memory_pool(void);
 static void bsw_init_system_timer(void);
+static void bsw_init_uart(void);
 static void bsw_uart_putchar_bitwise(char c);
 static void bsw_uart_puts_bitwise(const char* str);
 
@@ -45,8 +52,16 @@ static void bsw_uart_puts_bitwise(const char* str);
 static void bsw_init_memory_pool(void)
 {
     if (!g_bsw_memory_initialized) {
-        // 메모리 풀 초기화 (모든 블록 사용 가능)
-        g_bsw_memory_bitmap = 0;
+        // 뮤텍스 생성 (멀티태스킹 안전)
+        if (g_bsw_memory_mutex == NULL) {
+            g_bsw_memory_mutex = xSemaphoreCreateMutex();
+        }
+        
+        // 비트맵 초기화 (모든 블록 사용 가능)
+        for (int i = 0; i < BSW_BITMAP_WORDS; i++) {
+            g_bsw_memory_bitmap[i] = 0;
+        }
+        // 메모리 풀 초기화
         for (int i = 0; i < BSW_MEMORY_POOL_SIZE; i++) {
             g_bsw_memory_pool[i] = 0;
         }
@@ -62,6 +77,14 @@ static void bsw_init_system_timer(void)
         BSW_SYS_REG_SET_BIT(BSW_SYSTIMER_CONF, (1 << 0));
         g_bsw_timer_base_ms = 0;
         g_bsw_timer_initialized = true;
+    }
+}
+
+// BSW UART 초기화
+static void bsw_init_uart(void)
+{
+    if (g_bsw_uart_mutex == NULL) {
+        g_bsw_uart_mutex = xSemaphoreCreateMutex();
     }
 }
 
@@ -88,7 +111,7 @@ static void bsw_uart_puts_bitwise(const char* str)
 }
 
 /**
- * @brief BSW 로깅 구현 (비트연산 방식)
+ * @brief BSW 로깅 구현 (비트연산 방식, 멀티태스킹 안전)
  * 
  * UART 레지스터를 직접 제어하여 로그를 출력합니다.
  */
@@ -96,6 +119,10 @@ void bsw_log_bitwise(bsw_log_level_t level, const char* tag, const char* format,
     const char* level_str[] = {"E", "W", "I", "D"};
     
     if (level > BSW_LOG_DEBUG) return;
+    
+    // UART 초기화 및 뮤텍스 획듥
+    bsw_init_uart();
+    if (g_bsw_uart_mutex && xSemaphoreTake(g_bsw_uart_mutex, portMAX_DELAY) == pdTRUE) {
     
     // 로그 헤더 출력 (시간은 생략)
     bsw_uart_putchar_bitwise('[');
@@ -147,6 +174,36 @@ void bsw_log_bitwise(bsw_log_level_t level, const char* tag, const char* format,
                     bsw_uart_putchar_bitwise(c);
                     break;
                 }
+                case 'f': {
+                    // Float 지원 (소수점 2자리)
+                    double value = va_arg(args, double);
+                    int int_part = (int)value;
+                    int frac_part = (int)((value - int_part) * 100);
+                    if (frac_part < 0) frac_part = -frac_part;
+                    
+                    // 정수 부분 출력
+                    if (int_part < 0) {
+                        bsw_uart_putchar_bitwise('-');
+                        int_part = -int_part;
+                    }
+                    
+                    char buffer[12];
+                    int len = 0;
+                    do {
+                        buffer[len++] = '0' + (int_part % 10);
+                        int_part /= 10;
+                    } while (int_part > 0);
+                    
+                    for (int i = len - 1; i >= 0; i--) {
+                        bsw_uart_putchar_bitwise(buffer[i]);
+                    }
+                    
+                    // 소수점 출력
+                    bsw_uart_putchar_bitwise('.');
+                    bsw_uart_putchar_bitwise('0' + (frac_part / 10));
+                    bsw_uart_putchar_bitwise('0' + (frac_part % 10));
+                    break;
+                }
                 default:
                     bsw_uart_putchar_bitwise('%');
                     bsw_uart_putchar_bitwise(*p);
@@ -158,41 +215,49 @@ void bsw_log_bitwise(bsw_log_level_t level, const char* tag, const char* format,
         p++;
     }
     
-    bsw_uart_putchar_bitwise('\r');
-    bsw_uart_putchar_bitwise('\n');
-    
-    va_end(args);
+        bsw_uart_putchar_bitwise('\r');
+        bsw_uart_putchar_bitwise('\n');
+        
+        va_end(args);
+        
+        // 뮤텍스 해제
+        xSemaphoreGive(g_bsw_uart_mutex);
+    }
 }
 
 /**
- * @brief BSW 지연 구현 (비트연산 방식)
+ * @brief BSW 지연 구현 (멀티태스킹 안전)
  * 
- * CPU 사이클을 직접 카운팅하여 지연을 구현합니다.
+ * FreeRTOS vTaskDelay를 사용하여 다른 태스크에 CPU를 양보합니다.
  */
 void bsw_delay_ms(uint32_t delay_ms) {
-    // ESP32-C6 @ 160MHz 기준: 1ms = 160,000 사이클
-    volatile uint32_t cycles = delay_ms * 160000;
-    
-    while (cycles--) {
-        __asm__ __volatile__("nop");
-    }
+    // FreeRTOS 태스크 지연 (CPU 양보)
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
 /**
  * @brief BSW 시간 측정 구현 (비트연산 방식)
  * 
  * 시스템 타이머 레지스터를 직접 읽어 경과 시간을 반환합니다.
+ * ESP32-C6 SYSTIMER는 40MHz XTAL 클럭 사용.
  */
 uint32_t bsw_get_time_ms(void) {
     bsw_init_system_timer();
+    
+    // UPDATE 레지스터 트리거 (값 동기화)
+    #define BSW_SYSTIMER_UNIT0_OP (BSW_SYSTIMER_BASE + 0x00C)
+    BSW_SYS_REG_WRITE(BSW_SYSTIMER_UNIT0_OP, 1);
+    
+    // UPDATE 완료 대기 (약간의 지연)
+    for (volatile int i = 0; i < 10; i++);
     
     // 시스템 타이머 값 읽기 (64비트)
     uint32_t timer_lo = BSW_SYS_REG_READ(BSW_SYSTIMER_UNIT0_VALUE_LO);
     uint32_t timer_hi = BSW_SYS_REG_READ(BSW_SYSTIMER_UNIT0_VALUE_HI);
     
-    // 16MHz 클록 기준으로 밀리초 변환 (타이머 클록은 보통 16MHz)
+    // 40MHz XTAL 클록 기준으로 밀리초 변환
     uint64_t timer_us = ((uint64_t)timer_hi << 32) | timer_lo;
-    return (uint32_t)(timer_us / 16000);  // 마이크로초를 밀리초로 변환
+    return (uint32_t)(timer_us / 40000);  // 마이크로초를 밀리초로 변환 (40MHz)
 }
 
 /**
@@ -232,9 +297,10 @@ bsw_reset_reason_t bsw_get_reset_reason_bitwise(void) {
 }
 
 /**
- * @brief BSW 메모리 할당 구현 (비트연산 방식)
+ * @brief BSW 메모리 할당 구현 (비트연산 방식, 멀티태스킹 안전)
  * 
  * 정적 메모리 풀을 사용하여 메모리를 할당합니다.
+ * 128개 블록(8KB) 모두 사용 가능.
  */
 void* bsw_malloc_bitwise(size_t size) {
     bsw_init_memory_pool();
@@ -243,20 +309,32 @@ void* bsw_malloc_bitwise(size_t size) {
         return NULL;  // 크기 제한 초과
     }
     
-    // 사용 가능한 블록 찾기 (32개 블록까지 지원)
-    for (int i = 0; i < 32 && i < BSW_MEMORY_BLOCKS; i++) {
-        if (!(g_bsw_memory_bitmap & (1U << i))) {
-            // 블록 할당 마킹
-            g_bsw_memory_bitmap |= (1U << i);
-            return &g_bsw_memory_pool[i * BSW_MEMORY_BLOCK_SIZE];
+    void* ptr = NULL;
+    
+    // 뮤텍스 획듩 (멀티스레드 안전)
+    if (g_bsw_memory_mutex && xSemaphoreTake(g_bsw_memory_mutex, portMAX_DELAY) == pdTRUE) {
+        // 사용 가능한 블록 찾기 (128개 블록 지원)
+        for (int i = 0; i < BSW_MEMORY_BLOCKS; i++) {
+            int word_index = i / 32;  // 비트맵 워드 인덱스
+            int bit_index = i % 32;   // 워드 내 비트 인덱스
+            
+            if (!(g_bsw_memory_bitmap[word_index] & (1U << bit_index))) {
+                // 블록 할당 마킹
+                g_bsw_memory_bitmap[word_index] |= (1U << bit_index);
+                ptr = &g_bsw_memory_pool[i * BSW_MEMORY_BLOCK_SIZE];
+                break;
+            }
         }
+        
+        // 뮤텍스 해제
+        xSemaphoreGive(g_bsw_memory_mutex);
     }
     
-    return NULL;  // 사용 가능한 블록 없음
+    return ptr;
 }
 
 /**
- * @brief BSW 메모리 해제 구현 (비트연산 방식)
+ * @brief BSW 메모리 해제 구현 (비트연산 방식, 멀티태스킹 안전)
  * 
  * 정적 메모리 풀에서 메모리를 해제합니다.
  */
@@ -275,9 +353,17 @@ void bsw_free_bitwise(void* ptr) {
     uintptr_t offset = (uintptr_t)ptr - (uintptr_t)g_bsw_memory_pool;
     int block_index = offset / BSW_MEMORY_BLOCK_SIZE;
     
-    if (block_index >= 0 && block_index < 32 && block_index < BSW_MEMORY_BLOCKS) {
-        // 블록 해제 마킹
-        g_bsw_memory_bitmap &= ~(1 << block_index);
+    if (block_index >= 0 && block_index < BSW_MEMORY_BLOCKS) {
+        // 뮤텍스 획듩 (멀티스레드 안전)
+        if (g_bsw_memory_mutex && xSemaphoreTake(g_bsw_memory_mutex, portMAX_DELAY) == pdTRUE) {
+            // 비트맵에서 블록 해제
+            int word_index = block_index / 32;
+            int bit_index = block_index % 32;
+            g_bsw_memory_bitmap[word_index] &= ~(1U << bit_index);
+            
+            // 뮤텍스 해제
+            xSemaphoreGive(g_bsw_memory_mutex);
+        }
     }
 }
 
@@ -329,17 +415,32 @@ int bsw_strcmp_bitwise(const char* str1, const char* str2) {
  * @brief BSW 워치독 초기화 구현 (비트연산 방식)
  * 
  * 워치독 타이머를 레지스터 직접 제어로 초기화합니다.
+ * ESP32-C6 워치독 초기화 절차 준수 (WKEY 보호 해제 필수).
  */
 bool bsw_watchdog_init_bitwise(uint32_t timeout_ms) {
-    // 워치독 타이머 비활성화
+    // WDT 보호 키 값 (TRM 참조)
+    #define BSW_WDT_WKEY (BSW_WDT_BASE + 0x00C)
+    #define WDT_WKEY_VALUE 0x50D83AA1
+    
+    // 1. 보호 해제 (WKEY 레지스터에 매직 넘버 쓰기)
+    BSW_SYS_REG_WRITE(BSW_WDT_WKEY, WDT_WKEY_VALUE);
+    
+    // 2. 워치독 타이머 비활성화
     BSW_SYS_REG_WRITE(BSW_WDT_CONFIG0, 0);
     
-    // 타임아웃 설정 (밀리초를 클록 사이클로 변환)
-    uint32_t timeout_cycles = timeout_ms * 40000;  // 40MHz 클록 기준
+    // 3. 타임아웃 설정 (APB 클록 80MHz 기준)
+    uint32_t timeout_cycles = timeout_ms * 80000;  // 80MHz APB 클록
     BSW_SYS_REG_WRITE(BSW_WDT_CONFIG1, timeout_cycles);
     
-    // 워치독 타이머 활성화
-    BSW_SYS_REG_WRITE(BSW_WDT_CONFIG0, 0x83);  // 활성화 + 시스템 리셋 모드
+    // 4. 워치독 타이머 활성화 (시스템 리셋 모드)
+    BSW_SYS_REG_WRITE(BSW_WDT_CONFIG0, 0x83);
+    
+    // 5. 초기 FEED (타이머 시작)
+    BSW_SYS_REG_WRITE(BSW_WDT_FEED, 0x50);
+    BSW_SYS_REG_WRITE(BSW_WDT_FEED, 0xA0);
+    
+    // 6. 보호 다시 활성화
+    BSW_SYS_REG_WRITE(BSW_WDT_WKEY, 0);
     
     return true;
 }

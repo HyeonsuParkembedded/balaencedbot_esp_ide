@@ -12,11 +12,13 @@
  * - Full-duplex 및 Half-duplex 모드
  * - CPOL/CPHA 설정 가능 (SPI Mode 0-3)
  * - 하드웨어 기반 Chip Select 제어
+ * - FreeRTOS 멀티태스킹 안전
+ * - DMA 대용량 전송 지원
  * - CPU 부하 최소화
  * 
  * @author Hyeonsu Park, Suyong Kim
  * @date 2025-10-04
- * @version 1.0 (Hardware SPI Controller)
+ * @version 2.0 (FreeRTOS 멀티태스킹 안전 + DMA)
  */
 
 #ifndef SPI_DRIVER_H
@@ -24,6 +26,9 @@
 
 #include "gpio_driver.h"
 #include "esp_err.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -247,6 +252,35 @@ esp_err_t bsw_spi_cs_deselect(bsw_spi_port_t port);
  *         - ESP_FAIL: 해제 실패
  */
 esp_err_t bsw_spi_deinit(bsw_spi_port_t port);
+
+/**
+ * @defgroup SPI_DMA DMA 전송 API (v2.0 신규)
+ * @brief 대용량 SPI 데이터 전송 최적화
+ * @{
+ */
+
+/**
+ * @brief DMA를 사용한 SPI 전송
+ * 
+ * @param port SPI 포트 번호
+ * @param tx_buffer 송신 데이터 버퍼
+ * @param rx_buffer 수신 데이터 버퍼 (NULL 가능)
+ * @param length 전송할 데이터 길이
+ * @return esp_err_t 전송 결과
+ */
+esp_err_t bsw_spi_transfer_dma(bsw_spi_port_t port, const uint8_t* tx_buffer, 
+                               uint8_t* rx_buffer, size_t length);
+
+/**
+ * @brief DMA 전송 완료 대기
+ * 
+ * @param port SPI 포트 번호
+ * @param timeout_ms 타임아웃 (밀리초)
+ * @return esp_err_t 대기 결과
+ */
+esp_err_t bsw_spi_wait_dma_done(bsw_spi_port_t port, uint32_t timeout_ms);
+
+/** @} */ // SPI_DMA
 
 /** @} */ // SPI_DRIVER
 

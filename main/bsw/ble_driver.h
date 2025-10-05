@@ -121,6 +121,14 @@ bool ble_stop_advertising(void);
 bool ble_send_data(ble_conn_handle_t conn_handle, ble_char_handle_t char_handle, const uint8_t* data, size_t length);
 
 /**
+ * @brief Check if BLE connection is active
+ * 
+ * @param conn_handle Connection handle to check
+ * @return true if connected, false otherwise
+ */
+bool ble_is_connected(ble_conn_handle_t conn_handle);
+
+/**
  * @brief Create 16-bit UUID
  */
 bsw_ble_uuid_t ble_uuid_from_16(uint16_t uuid16);

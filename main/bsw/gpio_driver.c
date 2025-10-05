@@ -6,8 +6,8 @@
  * ESP32-C6의 GPIO 및 IO_MUX 레지스터를 직접 조작하여 최적화된 성능을 제공합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-10-01
- * @version 2.0
+ * @date 2025-10-04
+ * @version 3.0 (FreeRTOS Multitasking Safe)
  */
 
 #include "gpio_driver.h"
@@ -20,6 +20,7 @@
 #include "soc/interrupts.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 // ESP32-C6 GPIO 인터럽트 소스 번호 (soc/interrupts.h에 정의되어야 하지만 대체 정의)
 #ifndef ETS_GPIO_INTR_SOURCE
@@ -27,6 +28,10 @@
 #endif
 
 static const char* TAG = "BSW_GPIO";
+
+// FreeRTOS Mutex for GPIO thread safety
+static SemaphoreHandle_t gpio_mutex = NULL;
+static bool gpio_initialized = false;
 
 /**
  * @brief GPIO 핀 번호 유효성 검증 (Flash 핀 보호 포함)
@@ -37,8 +42,8 @@ static const char* TAG = "BSW_GPIO";
  * @note ESP32-C6에서 GPIO 26-30은 내부 Flash 연결에 사용되며 사용자가 접근 불가
  */
 static inline esp_err_t validate_gpio_num(bsw_gpio_num_t gpio_num) {
-    if (gpio_num >= GPIO_PIN_COUNT) {
-        BSW_LOGE(TAG, "GPIO %d exceeds maximum pin count %d", gpio_num, GPIO_PIN_COUNT);
+    if (gpio_num >= BSW_GPIO_PIN_COUNT) {
+        BSW_LOGE(TAG, "GPIO %d exceeds maximum pin count %d", gpio_num, BSW_GPIO_PIN_COUNT);
         return ESP_ERR_INVALID_ARG;
     }
     
@@ -56,11 +61,21 @@ static inline esp_err_t validate_gpio_num(bsw_gpio_num_t gpio_num) {
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
 esp_err_t bsw_gpio_init(void) {
+    // Mutex 생성 (처음 한 번만)
+    if (gpio_mutex == NULL) {
+        gpio_mutex = xSemaphoreCreateMutex();
+        if (gpio_mutex == NULL) {
+            bsw_log_bitwise(BSW_LOG_ERROR, TAG, "Failed to create GPIO mutex");
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    
     // GPIO 매트릭스와 IO_MUX 기본 설정
     // ESP32-C6의 GPIO 클럭을 활성화
     // 추가적인 전역 초기화 작업이 필요하면 여기에 추가
     
-    bsw_log_bitwise(BSW_LOG_INFO, TAG, "GPIO driver initialized with direct register control");
+    gpio_initialized = true;
+    bsw_log_bitwise(BSW_LOG_INFO, TAG, "GPIO driver initialized with FreeRTOS mutex protection");
     return ESP_OK;
 }
 
@@ -82,18 +97,33 @@ esp_err_t bsw_gpio_config_pin(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode,
     if (ret != ESP_OK) {
         return ret;
     }
+    
+    // Mutex protection for configuration
+    if (gpio_mutex == NULL) {
+        BSW_LOGE(TAG, "GPIO not initialized, call bsw_gpio_init() first");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    if (xSemaphoreTake(gpio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        BSW_LOGE(TAG, "Failed to acquire GPIO mutex");
+        return ESP_ERR_TIMEOUT;
+    }
 
     // 방향 설정 (W1TS/W1TC + 오픈 드레인 지원)
     ret = bsw_gpio_set_direction(gpio_num, mode);
     if (ret != ESP_OK) {
+        xSemaphoreGive(gpio_mutex);
         return ret;
     }
     
     // 풀업/풀다운 설정 (GPIO_PIN_N_REG + 비트 필드)
     ret = bsw_gpio_set_pull_mode(gpio_num, pull_up, pull_down);
     if (ret != ESP_OK) {
+        xSemaphoreGive(gpio_mutex);
         return ret;
     }
+    
+    xSemaphoreGive(gpio_mutex);
     
     BSW_LOGI(TAG, "GPIO %d configured: mode=%d, pull_up=%d, pull_down=%d", 
              gpio_num, mode, pull_up, pull_down);
@@ -114,7 +144,7 @@ esp_err_t bsw_gpio_config(const bsw_gpio_config_t* pGPIOConfig) {
     }
 
     // 비트마스크의 각 핀에 대해 설정 적용
-    for (int gpio_num = 0; gpio_num < GPIO_PIN_COUNT; gpio_num++) {
+    for (int gpio_num = 0; gpio_num < BSW_GPIO_PIN_COUNT; gpio_num++) {
         if (pGPIOConfig->pin_bit_mask & (1ULL << gpio_num)) {
             esp_err_t ret = bsw_gpio_config_pin(gpio_num, pGPIOConfig->mode, 
                                                 pGPIOConfig->pull_up_en, pGPIOConfig->pull_down_en);
@@ -155,6 +185,7 @@ int bsw_gpio_get_level(bsw_gpio_num_t gpio_num) {
  * 
  * @note W1TS (Write 1 to Set)와 W1TC (Write 1 to Clear) 레지스터를 사용하여
  *       한 번의 쓰기 동작으로 특정 핀의 상태만 안전하게 변경 (Atomic operation)
+ * @note Mutex 불필요: W1TS/W1TC 레지스터는 하드웨어적으로 atomic하므로 mutex 없이도 thread-safe
  */
 esp_err_t bsw_gpio_set_level(bsw_gpio_num_t gpio_num, uint32_t level) {
     // Flash 핀 보호를 포함한 GPIO 번호 검증
@@ -341,6 +372,11 @@ void bsw_gpio_raw_toggle_bits(uint32_t reg_addr, uint32_t bit_mask) {
 void bsw_gpio_configure_iomux(bsw_gpio_num_t gpio_num, uint32_t func_sel, bool pullup, bool pulldown) {
     if (validate_gpio_num(gpio_num) != ESP_OK) return;
     
+    // Mutex protection for read-modify-write operation
+    if (gpio_mutex != NULL) {
+        xSemaphoreTake(gpio_mutex, portMAX_DELAY);
+    }
+    
     // ESP32-C6: GPIO_PINn_REG를 사용 (통합 레지스터)
     uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     
@@ -363,6 +399,10 @@ void bsw_gpio_configure_iomux(bsw_gpio_num_t gpio_num, uint32_t func_sel, bool p
     
     // 레지스터에 쓰기
     REG_WRITE(pin_reg_addr, reg_val);
+    
+    if (gpio_mutex != NULL) {
+        xSemaphoreGive(gpio_mutex);
+    }
 }
 
 /**
@@ -380,6 +420,11 @@ void bsw_gpio_configure_iomux(bsw_gpio_num_t gpio_num, uint32_t func_sel, bool p
 void bsw_gpio_set_drive_strength(bsw_gpio_num_t gpio_num, uint8_t strength) {
     if (validate_gpio_num(gpio_num) != ESP_OK || strength > 3) return;
     
+    // Mutex protection for read-modify-write operation
+    if (gpio_mutex != NULL) {
+        xSemaphoreTake(gpio_mutex, portMAX_DELAY);
+    }
+    
     // ESP32-C6: GPIO_PINn_REG 사용 (통합 레지스터)
     uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     
@@ -392,6 +437,10 @@ void bsw_gpio_set_drive_strength(bsw_gpio_num_t gpio_num, uint8_t strength) {
     
     // 레지스터에 쓰기
     REG_WRITE(pin_reg_addr, reg_val);
+    
+    if (gpio_mutex != NULL) {
+        xSemaphoreGive(gpio_mutex);
+    }
 }
 
 /**
@@ -404,6 +453,11 @@ void bsw_gpio_set_drive_strength(bsw_gpio_num_t gpio_num, uint8_t strength) {
  */
 void bsw_gpio_set_slew_rate(bsw_gpio_num_t gpio_num, bool fast_slew) {
     if (validate_gpio_num(gpio_num) != ESP_OK) return;
+    
+    // Mutex protection for read-modify-write operation
+    if (gpio_mutex != NULL) {
+        xSemaphoreTake(gpio_mutex, portMAX_DELAY);
+    }
     
     // ESP32-C6: GPIO_PINn_REG 사용 (통합 레지스터)
     uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
@@ -420,6 +474,10 @@ void bsw_gpio_set_slew_rate(bsw_gpio_num_t gpio_num, bool fast_slew) {
     
     // 레지스터에 쓰기
     REG_WRITE(pin_reg_addr, reg_val);
+    
+    if (gpio_mutex != NULL) {
+        xSemaphoreGive(gpio_mutex);
+    }
 }
 
 // BSW GPIO 인터럽트 처리 - 하드웨어 인터럽트 구현
@@ -427,8 +485,8 @@ void bsw_gpio_set_slew_rate(bsw_gpio_num_t gpio_num, bool fast_slew) {
 /**
  * @brief GPIO ISR 핸들러 저장 배열
  */
-static bsw_gpio_isr_t gpio_isr_handlers[GPIO_PIN_COUNT];
-static void* gpio_isr_args[GPIO_PIN_COUNT];
+static bsw_gpio_isr_t gpio_isr_handlers[BSW_GPIO_PIN_COUNT];
+static void* gpio_isr_args[BSW_GPIO_PIN_COUNT];
 static bool isr_service_installed = false;
 static intr_handle_t gpio_isr_handle = NULL;
 
@@ -478,7 +536,7 @@ esp_err_t bsw_gpio_install_isr_service(int intr_alloc_flags) {
     }
     
     // ISR 핸들러 배열 초기화
-    for (int i = 0; i < GPIO_PIN_COUNT; i++) {
+    for (int i = 0; i < BSW_GPIO_PIN_COUNT; i++) {
         gpio_isr_handlers[i] = NULL;
         gpio_isr_args[i] = NULL;
     }
@@ -619,6 +677,14 @@ esp_err_t bsw_gpio_set_intr_type(bsw_gpio_num_t gpio_num, bsw_gpio_int_type_t in
         return ret;
     }
     
+    // Mutex protection for read-modify-write operation
+    if (gpio_mutex != NULL) {
+        if (xSemaphoreTake(gpio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            BSW_LOGE(TAG, "Failed to acquire GPIO mutex");
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+    
     uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     uint32_t reg_val = REG_READ(pin_reg_addr);
     
@@ -629,6 +695,10 @@ esp_err_t bsw_gpio_set_intr_type(bsw_gpio_num_t gpio_num, bsw_gpio_int_type_t in
     reg_val |= ((intr_type & 0x7) << GPIO_PIN_INT_TYPE_SHIFT);
     
     REG_WRITE(pin_reg_addr, reg_val);
+    
+    if (gpio_mutex != NULL) {
+        xSemaphoreGive(gpio_mutex);
+    }
     
     BSW_LOGI(TAG, "GPIO %d interrupt type set to %d", gpio_num, intr_type);
     return ESP_OK;
@@ -649,6 +719,14 @@ esp_err_t bsw_gpio_intr_enable(bsw_gpio_num_t gpio_num) {
         return ret;
     }
     
+    // Mutex protection for read-modify-write operation
+    if (gpio_mutex != NULL) {
+        if (xSemaphoreTake(gpio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            BSW_LOGE(TAG, "Failed to acquire GPIO mutex");
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+    
     uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     uint32_t reg_val = REG_READ(pin_reg_addr);
     
@@ -656,6 +734,10 @@ esp_err_t bsw_gpio_intr_enable(bsw_gpio_num_t gpio_num) {
     reg_val |= (1U << GPIO_PIN_INT_ENA_SHIFT);
     
     REG_WRITE(pin_reg_addr, reg_val);
+    
+    if (gpio_mutex != NULL) {
+        xSemaphoreGive(gpio_mutex);
+    }
     
     BSW_LOGI(TAG, "GPIO %d interrupt enabled", gpio_num);
     return ESP_OK;
@@ -675,6 +757,14 @@ esp_err_t bsw_gpio_intr_disable(bsw_gpio_num_t gpio_num) {
         return ret;
     }
     
+    // Mutex protection for read-modify-write operation
+    if (gpio_mutex != NULL) {
+        if (xSemaphoreTake(gpio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+            BSW_LOGE(TAG, "Failed to acquire GPIO mutex");
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+    
     uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     uint32_t reg_val = REG_READ(pin_reg_addr);
     
@@ -685,6 +775,10 @@ esp_err_t bsw_gpio_intr_disable(bsw_gpio_num_t gpio_num) {
     
     // 인터럽트 상태 클리어 (혹시 남아있을 수 있는 인터럽트 플래그 제거)
     REG_WRITE(BSW_GPIO_STATUS_W1TC_REG, (1UL << gpio_num));
+    
+    if (gpio_mutex != NULL) {
+        xSemaphoreGive(gpio_mutex);
+    }
     
     BSW_LOGI(TAG, "GPIO %d interrupt disabled", gpio_num);
     return ESP_OK;
@@ -700,7 +794,7 @@ esp_err_t bsw_gpio_intr_disable(bsw_gpio_num_t gpio_num) {
  * @note 하위 호환성을 위해 유지되지만 사용을 권장하지 않습니다.
  */
 void bsw_gpio_poll_isr(bsw_gpio_num_t gpio_num) {
-    static uint32_t prev_state[GPIO_PIN_COUNT] = {0};
+    static uint32_t prev_state[BSW_GPIO_PIN_COUNT] = {0};
     
     if (!isr_service_installed || validate_gpio_num(gpio_num) != ESP_OK) {
         return;
@@ -722,4 +816,28 @@ void bsw_gpio_poll_isr(bsw_gpio_num_t gpio_num) {
             gpio_isr_handlers[gpio_num](gpio_isr_args[gpio_num]);
         }
     }
+}
+
+/**
+ * @brief GPIO 드라이버 해제 (리소스 정리)
+ * 
+ * @return ESP_OK 성공, ESP_FAIL 실패
+ * 
+ * @note ISR 서비스가 설치되어 있으면 먼저 제거하고, mutex를 삭제합니다.
+ */
+esp_err_t bsw_gpio_deinit(void) {
+    // ISR 서비스 제거
+    if (isr_service_installed) {
+        bsw_gpio_uninstall_isr_service();
+    }
+    
+    // Mutex 삭제
+    if (gpio_mutex != NULL) {
+        vSemaphoreDelete(gpio_mutex);
+        gpio_mutex = NULL;
+    }
+    
+    gpio_initialized = false;
+    bsw_log_bitwise(BSW_LOG_INFO, TAG, "GPIO driver deinitialized");
+    return ESP_OK;
 }

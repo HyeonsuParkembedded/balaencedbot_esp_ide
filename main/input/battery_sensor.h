@@ -15,8 +15,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "esp_adc/adc_oneshot.h"
-#include "esp_adc/adc_cali.h"
+#include "../bsw/adc_driver.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,12 +35,12 @@ typedef enum {
 
 /**
  * @struct battery_sensor_t
- * @brief 배터리 센서 구조체
+ * @brief 배터리 센서 구조체 (BSW ADC 드라이버 사용)
  */
 typedef struct {
-    adc_oneshot_unit_handle_t adc_handle;    ///< ADC 핸들
-    adc_cali_handle_t adc_cali_handle;       ///< ADC 교정 핸들
-    adc_channel_t channel;                   ///< ADC 채널
+    bsw_adc_unit_t adc_unit;                 ///< BSW ADC 유닛
+    bsw_adc_channel_t adc_channel;           ///< BSW ADC 채널
+    bsw_adc_atten_t attenuation;             ///< ADC 감쇠 레벨
     float voltage_divider_ratio;             ///< 전압 분배비 (R1+R2)/R2
     float last_voltage;                      ///< 최근 측정 전압
     battery_level_t battery_level;           ///< 현재 배터리 수준
@@ -55,18 +54,27 @@ typedef struct {
  */
 
 /**
- * @brief 배터리 센서 초기화
+ * @brief 배터리 센서 초기화 (BSW ADC 드라이버 사용)
  * 
- * ADC를 설정하고 전압 분배비를 계산하여 배터리 센서를 초기화합니다.
+ * BSW ADC를 설정하고 전압 분배비를 계산하여 배터리 센서를 초기화합니다.
  * 
  * @param battery 배터리 센서 구조체 포인터
- * @param channel ADC 채널
+ * @param adc_unit BSW ADC 유닛 (BSW_ADC_UNIT_1)
+ * @param adc_channel BSW ADC 채널 (BSW_ADC_CHANNEL_0~6)
+ * @param gpio_pin ADC에 사용할 GPIO 핀 번호
  * @param r1_kohm 전압분배 상단 저항 값 (kΩ)
  * @param r2_kohm 전압분배 하단 저항 값 (kΩ)
  * @return esp_err_t 초기화 결과
+ * 
+ * @note ESP32-C6에서 ADC1_CH3 (GPIO3)을 권장합니다.
+ *       ADC1_CH6 (GPIO6)은 I2C와 충돌하므로 사용 불가합니다.
  */
-esp_err_t battery_sensor_init(battery_sensor_t* battery, adc_channel_t channel, 
-                             float r1_kohm, float r2_kohm);
+esp_err_t battery_sensor_init(battery_sensor_t* battery, 
+                             bsw_adc_unit_t adc_unit,
+                             bsw_adc_channel_t adc_channel,
+                             bsw_gpio_num_t gpio_pin,
+                             float r1_kohm, 
+                             float r2_kohm);
 
 /**
  * @brief 배터리 전압 측정

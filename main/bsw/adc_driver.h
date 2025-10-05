@@ -82,24 +82,38 @@
 
 /**
  * @brief BSW ADC Unit Type Definition
+ * 
+ * @warning ESP32-C6 제약사항:
+ *          - ESP32-C6는 ADC1만 지원합니다 (ADC2 없음)
+ *          - ADC1_CH6 (GPIO6)은 I2C SDA로 사용 중이므로 사용 불가
+ *          - GPIO 26-30은 Flash 전용이므로 ADC로 사용 불가
  */
 typedef enum {
-    BSW_ADC_UNIT_1 = 0,         ///< ADC Unit 1
-    BSW_ADC_UNIT_2,             ///< ADC Unit 2
+    BSW_ADC_UNIT_1 = 0,         ///< ADC Unit 1 (ESP32-C6에서 사용 가능)
+    BSW_ADC_UNIT_2,             ///< ADC Unit 2 (ESP32-C6에서 미지원, 호환성을 위한 정의)
     BSW_ADC_UNIT_MAX
 } bsw_adc_unit_t;
 
 /**
  * @brief ADC Channel Numbers
+ * 
+ * @warning ESP32-C6 ADC1 채널 매핑:
+ *          - CH0: GPIO0 (사용 가능)
+ *          - CH1: GPIO1 (Encoder Left A - 이미 사용 중)
+ *          - CH2: GPIO2 (Encoder Left B - 이미 사용 중)
+ *          - CH3: GPIO3 (Battery ADC - 사용 중)
+ *          - CH4: GPIO4 (사용 가능)
+ *          - CH5: GPIO5 (사용 가능)
+ *          - CH6: GPIO6 (I2C SDA - 사용 불가! ⚠️)
  */
 typedef enum {
-    BSW_ADC_CHANNEL_0 = 0,      ///< ADC Channel 0
-    BSW_ADC_CHANNEL_1,          ///< ADC Channel 1
-    BSW_ADC_CHANNEL_2,          ///< ADC Channel 2
-    BSW_ADC_CHANNEL_3,          ///< ADC Channel 3
-    BSW_ADC_CHANNEL_4,          ///< ADC Channel 4
-    BSW_ADC_CHANNEL_5,          ///< ADC Channel 5
-    BSW_ADC_CHANNEL_6,          ///< ADC Channel 6
+    BSW_ADC_CHANNEL_0 = 0,      ///< ADC Channel 0 (GPIO0)
+    BSW_ADC_CHANNEL_1,          ///< ADC Channel 1 (GPIO1 - Encoder)
+    BSW_ADC_CHANNEL_2,          ///< ADC Channel 2 (GPIO2 - Encoder)
+    BSW_ADC_CHANNEL_3,          ///< ADC Channel 3 (GPIO3 - Battery)
+    BSW_ADC_CHANNEL_4,          ///< ADC Channel 4 (GPIO4)
+    BSW_ADC_CHANNEL_5,          ///< ADC Channel 5 (GPIO5)
+    BSW_ADC_CHANNEL_6,          ///< ADC Channel 6 (GPIO6 - I2C SDA, 사용 금지!)
     BSW_ADC_CHANNEL_MAX
 } bsw_adc_channel_t;
 

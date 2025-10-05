@@ -371,21 +371,33 @@ static esp_err_t init_right_encoder_wrapper(void) {
  * 
  * config.h에 정의된 설정값을 사용하여 GPS 센서를 초기화하는 래퍼 함수입니다.
  * 
+ * NOTE: Temporarily disabled for testing without GPS hardware
+ *       GPS UART RX polling task causes watchdog timeout without actual GPS module
+ *       Also fixed argument order bug in gps_sensor.c: uart_driver_init(port, baudrate, tx, rx)
+ * 
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
+#if 0  // Disabled for hardware-less testing
 static esp_err_t init_gps_wrapper(void) {
-    return gps_sensor_init(&gps, CONFIG_GPS_UART_PORT, CONFIG_GPS_TX_PIN, CONFIG_GPS_RX_PIN, CONFIG_GPS_BAUDRATE);
+    return gps_sensor_init(&gps, CONFIG_GPS_UART_PORT, CONFIG_GPS_BAUDRATE, CONFIG_GPS_TX_PIN, CONFIG_GPS_RX_PIN);
 }
+#endif
 
 /**
- * @brief 배터리 센서 초기화 래퍼 함수
+ * @brief 배터리 센서 초기화 래퍼 함수 (BSW ADC 사용)
  * 
  * config.h에 정의된 설정값을 사용하여 배터리 센서를 초기화하는 래퍼 함수입니다.
+ * BSW ADC 드라이버를 사용하여 직접 레지스터 제어로 성능 최적화.
  * 
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
 static esp_err_t init_battery_wrapper(void) {
-    return battery_sensor_init(&battery_sensor, CONFIG_BATTERY_ADC_CHANNEL, CONFIG_BATTERY_R1_KOHM, CONFIG_BATTERY_R2_KOHM);
+    return battery_sensor_init(&battery_sensor, 
+                              BSW_ADC_UNIT_1,                    // ADC1 사용
+                              BSW_ADC_CHANNEL_3,                  // CH3 (GPIO3)
+                              CONFIG_BATTERY_ADC_PIN,             // GPIO3
+                              CONFIG_BATTERY_R1_KOHM, 
+                              CONFIG_BATTERY_R2_KOHM);
 }
 
 /**
@@ -439,16 +451,26 @@ static esp_err_t init_config_manager_wrapper(void) {
  * - PID 제어기
  */
 static void initialize_robot(void) {
+    // Initialize BSW GPIO driver first (required by all other drivers)
+    esp_err_t gpio_ret = bsw_gpio_init();
+    if (gpio_ret != ESP_OK) {
+        BSW_LOGE(TAG, "Failed to initialize GPIO driver!");
+        enter_safe_mode();
+        return;
+    }
+    BSW_LOGI(TAG, "GPIO driver initialized");
+    
     // Initialize error recovery system
     error_recovery_init();
     
     // Define component configurations
     component_info_t components[] = {
         {"Config_Manager", init_config_manager_wrapper, COMPONENT_CRITICAL, false, 0},
-        {"IMU_Sensor", init_imu_wrapper, COMPONENT_CRITICAL, false, 0},
-        {"Left_Encoder", init_left_encoder_wrapper, COMPONENT_CRITICAL, false, 0},
-        {"Right_Encoder", init_right_encoder_wrapper, COMPONENT_CRITICAL, false, 0},
-        {"GPS_Sensor", init_gps_wrapper, COMPONENT_OPTIONAL, false, 0},
+        {"IMU_Sensor", init_imu_wrapper, COMPONENT_OPTIONAL, false, 0},  // ⚠️ OPTIONAL로 변경 (하드웨어 미연결 시 테스트용)
+        {"Left_Encoder", init_left_encoder_wrapper, COMPONENT_OPTIONAL, false, 0},  // ⚠️ OPTIONAL로 변경
+        {"Right_Encoder", init_right_encoder_wrapper, COMPONENT_OPTIONAL, false, 0},  // ⚠️ OPTIONAL로 변경
+        // GPS disabled for testing without hardware to prevent UART RX polling watchdog timeout
+        // {"GPS_Sensor", init_gps_wrapper, COMPONENT_OPTIONAL, false, 0},
         {"Battery_Sensor", init_battery_wrapper, COMPONENT_IMPORTANT, false, 0},
         {"BLE_Controller", init_ble_wrapper, COMPONENT_IMPORTANT, false, 0},
         {"Servo_Standup", init_servo_wrapper, COMPONENT_IMPORTANT, false, 0}

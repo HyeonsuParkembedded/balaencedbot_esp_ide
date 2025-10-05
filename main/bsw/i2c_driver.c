@@ -26,7 +26,7 @@
  * 
  * @author Hyeonsu Park, Suyong Kim
  * @date 2025-10-04
- * @version 6.0 (Enhanced Production Ready)
+ * @version 6.1 (CPU Blocking Removed)
  */
 
 #include "i2c_driver.h"
@@ -106,7 +106,7 @@ static inline uint32_t i2c_get_base_addr(bsw_i2c_port_t port) {
  * @return esp_err_t ESP_OK or ESP_ERR_TIMEOUT
  */
 static esp_err_t i2c_wait_trans_complete(uint32_t base, uint32_t timeout_ms) {
-    uint32_t start_time = esp_timer_get_time() / 1000;  // Convert to ms
+    TickType_t start_tick = xTaskGetTickCount();
     
     while (1) {
         uint32_t int_status = I2C_READ_REG(base, I2C_INT_RAW_REG_OFFSET);
@@ -127,14 +127,14 @@ static esp_err_t i2c_wait_trans_complete(uint32_t base, uint32_t timeout_ms) {
         }
         
         // Check timeout
-        uint32_t elapsed = (esp_timer_get_time() / 1000) - start_time;
-        if (elapsed >= timeout_ms) {
-            BSW_LOGE(I2C_TAG, "I2C transaction timeout after %lu ms", elapsed);
+        TickType_t elapsed_ticks = xTaskGetTickCount() - start_tick;
+        if (pdTICKS_TO_MS(elapsed_ticks) >= timeout_ms) {
+            BSW_LOGE(I2C_TAG, "I2C transaction timeout after %lu ms", pdTICKS_TO_MS(elapsed_ticks));
             return ESP_ERR_TIMEOUT;
         }
         
-        // Small delay to avoid busy-wait
-        esp_rom_delay_us(10);
+        // Yield CPU to other tasks (FreeRTOS-safe)
+        vTaskDelay(1);
     }
 }
 

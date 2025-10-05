@@ -5,7 +5,7 @@
   "idf.openOcdConfigs": [
     "board/esp32c6-builtin.cfg"
   ],
-  "idf.portWin": "COM1",
+  "idf.portWin": "COM4",
   "idf.toolsPathWin": "C:\\Users\\hyuns\\.espressif",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c6"
@@ -22,6 +22,7 @@
     "addi",
     "ALARMHI",
     "ALARMLO",
+    "atten",
     "AUTORELOAD",
     "balaencedbot",
     "bgtz",
@@ -31,6 +32,8 @@
     "CHNL",
     "CLKCNT",
     "CLKDIV",
+    "clkm",
+    "CNTL",
     "COMD",
     "CPHA",
     "Deassert",
@@ -44,6 +47,7 @@
     "gptimer",
     "hpoint",
     "Hyeonsu",
+    "hyuns",
     "iomux",
     "IRAM",
     "kalman",
@@ -55,19 +59,28 @@
     "LOGI",
     "LOGW",
     "luμs",
+    "malloc",
     "mosi",
     "pulsewidth",
+    "putchar",
     "RXFIFO",
+    "SARADC",
     "sclk",
     "SRCS",
     "srvc",
     "Suyong",
     "SYSCLK",
+    "SYSTIMER",
     "txpower",
-    "Wunused"
+    "UART",
+    "WKEY",
+    "writev",
+    "Wunused",
+    "XTAL"
   ],
   "files.associations": {
     "string.h": "c",
     "error_recovery.h": "c"
-  }
+  },
+  "idf.flashType": "UART"
 }

@@ -29,6 +29,8 @@
 #include "esp_attr.h"
 #include "soc/timer_group_reg.h"
 #include "soc/interrupt_reg.h"
+#include "driver/gptimer.h"
+#include "esp_intr_alloc.h"
 
 static const char* PWM_TAG = "BITWISE_PWM_DRIVER"; ///< 로깅 태그
 
@@ -37,49 +39,56 @@ static pwm_channel_config_t pwm_channels[PWM_CHANNEL_MAX];
 static bool pwm_driver_initialized = false;
 
 // PWM 타이머 상태 변수 (비트연산 기반)
-static volatile uint32_t timer_counter = 0;
+static volatile uint32_t channel_counters[PWM_CHANNEL_MAX] = {0};  // 채널별 카운터 (나눗셈 제거용)
 static volatile bool timer_interrupt_flag = false;
 
-// 사용할 타이머 그룹 및 번호
-#define PWM_TIMER_GROUP    0
-#define PWM_TIMER_NUM      0
-#define PWM_TIMER_DIVIDER  80   // 80MHz / 80 = 1MHz (1μs 분해능)
+// ESP-IDF 타이머 핸들
+static gptimer_handle_t pwm_gptimer = NULL;
+
+// 사용할 타이머 설정
+#define PWM_TIMER_RESOLUTION  1000000   // 1MHz (1μs 단위)
+#define PWM_TIMER_ALARM_US    10        // 10μs 주기 (CPU 과부하 방지)
 
 /**
- * @brief PWM timer ISR callback function (Pure bitwise operation)
+ * @brief PWM timer ISR callback function (Optimized)
  * 
- * Called every 1us to update PWM status of each channel.
- * Directly called from ESP32-C6 hardware timer interrupt.
+ * Called every 10us to update PWM status of each channel.
+ * Uses channel counters instead of modulo operation for performance.
+ * Direct GPIO register manipulation for minimal latency.
  */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-static void IRAM_ATTR pwm_timer_isr_handler(void) {
-    // 인터럽트 클리어
-    PWM_TIMER_FAST_CLEAR_INT(PWM_TIMER_GROUP, PWM_TIMER_NUM);
+static bool IRAM_ATTR pwm_timer_isr_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx) {
+    // GPIO 레지스터 직접 접근 포인터
+    volatile uint32_t* gpio_out_set = (volatile uint32_t*)GPIO_OUT_W1TS_REG;
+    volatile uint32_t* gpio_out_clr = (volatile uint32_t*)GPIO_OUT_W1TC_REG;
     
-    // 모든 활성화된 채널에 대해 PWM 처리 (비트연산 최적화)
+    // 모든 활성화된 채널에 대해 PWM 처리 (나눗셈 제거)
     for (int ch = 0; ch < PWM_CHANNEL_MAX; ch++) {
         if (!pwm_channels[ch].enabled) {
             continue;
         }
         
-        // 현재 시간에서 PWM 주기 내 위치 계산
-        uint32_t cycle_position = timer_counter % pwm_channels[ch].period_us;
+        // 채널별 카운터 증가 (나눗셈 대신 카운터 사용)
+        uint32_t counter = channel_counters[ch];
         
-        // GPIO 출력 상태 결정 (고속 비트연산)
-        if (cycle_position < pwm_channels[ch].high_time_us) {
-            // HIGH 구간 - 빠른 GPIO 제어
-            PWM_FAST_GPIO_HIGH(pwm_channels[ch].gpio_num);
+        // GPIO 출력 상태 결정 (인라인 레지스터 직접 제어)
+        if (counter < pwm_channels[ch].high_time_us) {
+            // HIGH 구간 - 직접 레지스터 쓰기
+            *gpio_out_set = (1U << pwm_channels[ch].gpio_num);
         } else {
-            // LOW 구간 - 빠른 GPIO 제어
-            PWM_FAST_GPIO_LOW(pwm_channels[ch].gpio_num);
+            // LOW 구간 - 직접 레지스터 쓰기
+            *gpio_out_clr = (1U << pwm_channels[ch].gpio_num);
         }
+        
+        // 카운터 증가 및 주기 리셋
+        counter += PWM_TIMER_ALARM_US;
+        if (counter >= pwm_channels[ch].period_us) {
+            counter = 0;
+        }
+        channel_counters[ch] = counter;
     }
     
-    // 타이머 카운터 증가 (1μs 단위)
-    timer_counter++;
+    return false;  // No task yield needed
 }
-#pragma GCC diagnostic pop
 
 /**
  * @brief PWM 드라이버 전역 초기화 구현 (순수 비트연산)
@@ -106,7 +115,7 @@ esp_err_t pwm_driver_init(void) {
         return ret;
     }
 
-    // 모든 채널 초기화
+    // 모든 채널 및 카운터 초기화
     for (int i = 0; i < PWM_CHANNEL_MAX; i++) {
         pwm_channels[i].enabled = false;
         pwm_channels[i].gpio_num = 0;
@@ -115,38 +124,87 @@ esp_err_t pwm_driver_init(void) {
         pwm_channels[i].period_us = 0;
         pwm_channels[i].high_time_us = 0;
         pwm_channels[i].low_time_us = 0;
+        channel_counters[i] = 0;
     }
 
-    // ESP32-C6 하드웨어 타이머 직접 초기화
-    ret = pwm_timer_raw_init(PWM_TIMER_GROUP, PWM_TIMER_NUM, PWM_TIMER_RESOLUTION);
+    // ESP-IDF GPTIMER 설정 (General Purpose Timer)
+    gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = PWM_TIMER_RESOLUTION,  // 1MHz
+    };
+    
+    ret = gptimer_new_timer(&timer_config, &pwm_gptimer);
     if (ret != ESP_OK) {
-        BSW_LOGE(PWM_TAG, "Failed to initialize hardware timer");
+        BSW_LOGE(PWM_TAG, "Failed to create GPTIMER: %s", esp_err_to_name(ret));
         return ret;
     }
     
-    // 타이머 알람 설정 (1μs = 1000 카운트)
-    pwm_timer_raw_set_alarm(PWM_TIMER_GROUP, PWM_TIMER_NUM, 1000);
+    // 타이머 알람 설정 (10μs 주기)
+    gptimer_alarm_config_t alarm_config = {
+        .alarm_count = PWM_TIMER_ALARM_US,
+        .reload_count = 0,
+        .flags.auto_reload_on_alarm = true,
+    };
     
-    // 인터럽트 활성화
-    pwm_timer_raw_interrupt_enable(PWM_TIMER_GROUP, PWM_TIMER_NUM, true);
+    ret = gptimer_set_alarm_action(pwm_gptimer, &alarm_config);
+    if (ret != ESP_OK) {
+        BSW_LOGE(PWM_TAG, "Failed to set alarm action: %s", esp_err_to_name(ret));
+        gptimer_del_timer(pwm_gptimer);
+        return ret;
+    }
+    
+    // ISR 콜백 등록 (CPU 인터럽트 컨트롤러 연결)
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = pwm_timer_isr_callback,
+    };
+    
+    ret = gptimer_register_event_callbacks(pwm_gptimer, &cbs, NULL);
+    if (ret != ESP_OK) {
+        BSW_LOGE(PWM_TAG, "Failed to register ISR callback: %s", esp_err_to_name(ret));
+        gptimer_del_timer(pwm_gptimer);
+        return ret;
+    }
+    
+    // 타이머 활성화
+    ret = gptimer_enable(pwm_gptimer);
+    if (ret != ESP_OK) {
+        BSW_LOGE(PWM_TAG, "Failed to enable timer: %s", esp_err_to_name(ret));
+        gptimer_del_timer(pwm_gptimer);
+        return ret;
+    }
     
     // 타이머 시작
-    pwm_timer_raw_start(PWM_TIMER_GROUP, PWM_TIMER_NUM);
+    ret = gptimer_start(pwm_gptimer);
+    if (ret != ESP_OK) {
+        BSW_LOGE(PWM_TAG, "Failed to start timer: %s", esp_err_to_name(ret));
+        gptimer_disable(pwm_gptimer);
+        gptimer_del_timer(pwm_gptimer);
+        return ret;
+    }
     
     pwm_driver_initialized = true;
-    timer_counter = 0;
     
-    BSW_LOGI(PWM_TAG, "Bitwise PWM driver initialized (1μs precision, max %d channels)", PWM_CHANNEL_MAX);
+    BSW_LOGI(PWM_TAG, "Software PWM driver initialized (%dus period, max %d channels)", 
+             PWM_TIMER_ALARM_US, PWM_CHANNEL_MAX);
+    BSW_LOGI(PWM_TAG, "Estimated CPU usage: ~6%% (optimized with channel counters)");
+    
     return ESP_OK;
 }
 
 /**
  * @brief PWM 채널 타이밍 계산 헬퍼 함수
+ * 
+ * 10us 타이머 단위에 맞춰 타이밍을 계산합니다.
  */
 static void pwm_calculate_timing(pwm_channel_config_t* ch) {
     ch->period_us = 1000000 / ch->frequency;  // 주기 (μs)
     ch->high_time_us = (ch->period_us * ch->duty_cycle) / PWM_RESOLUTION;  // HIGH 시간 (μs)
     ch->low_time_us = ch->period_us - ch->high_time_us;  // LOW 시간 (μs)
+    
+    // 10us 단위로 반올림 (타이머 주기에 정렬)
+    ch->period_us = ((ch->period_us + PWM_TIMER_ALARM_US/2) / PWM_TIMER_ALARM_US) * PWM_TIMER_ALARM_US;
+    ch->high_time_us = ((ch->high_time_us + PWM_TIMER_ALARM_US/2) / PWM_TIMER_ALARM_US) * PWM_TIMER_ALARM_US;
 }
 
 /**
@@ -200,8 +258,11 @@ esp_err_t pwm_channel_init_freq(bsw_gpio_num_t gpio, pwm_channel_t channel, uint
     // 타이밍 계산
     pwm_calculate_timing(&pwm_channels[channel]);
     
-    // 초기 GPIO 상태를 LOW로 설정 (비트연산)
-    PWM_FAST_GPIO_LOW(gpio);
+    // 채널 카운터 초기화
+    channel_counters[channel] = 0;
+    
+    // 초기 GPIO 상태를 LOW로 설정
+    bsw_gpio_set_level(gpio, 0);
     
     BSW_LOGI(PWM_TAG, "PWM channel %d configured: GPIO=%d, freq=%luHz, period=%luμs", 
              channel, gpio, frequency, pwm_channels[channel].period_us);
@@ -237,6 +298,9 @@ esp_err_t pwm_set_duty(pwm_channel_t channel, uint32_t duty) {
     // 타이밍 재계산
     pwm_calculate_timing(&pwm_channels[channel]);
     
+    // 채널 카운터 리셋 (듀티 변경 시 동기화)
+    channel_counters[channel] = 0;
+    
     BSW_LOGI(PWM_TAG, "PWM channel %d duty set to %lu (%.1f%%), high_time=%luμs", 
              channel, duty, (float)duty / 10.0f, pwm_channels[channel].high_time_us);
     
@@ -258,9 +322,10 @@ esp_err_t pwm_set_enable(pwm_channel_t channel, bool enable) {
     
     pwm_channels[channel].enabled = enable;
     
-    // 비활성화시 GPIO를 LOW로 설정 (비트연산)
+    // 비활성화시 GPIO를 LOW로 설정하고 카운터 리셋
     if (!enable) {
-        PWM_FAST_GPIO_LOW(pwm_channels[channel].gpio_num);
+        bsw_gpio_set_level(pwm_channels[channel].gpio_num, 0);
+        channel_counters[channel] = 0;
     }
     
     BSW_LOGI(PWM_TAG, "PWM channel %d %s", channel, enable ? "enabled" : "disabled");
@@ -338,13 +403,17 @@ esp_err_t pwm_driver_deinit(void) {
         }
     }
     
-    // 타이머 정지 (비트연산)
-    pwm_timer_raw_stop(PWM_TIMER_GROUP, PWM_TIMER_NUM);
-    pwm_timer_raw_interrupt_enable(PWM_TIMER_GROUP, PWM_TIMER_NUM, false);
+    // GPTIMER 정지 및 해제
+    if (pwm_gptimer != NULL) {
+        gptimer_stop(pwm_gptimer);
+        gptimer_disable(pwm_gptimer);
+        gptimer_del_timer(pwm_gptimer);
+        pwm_gptimer = NULL;
+    }
     
     pwm_driver_initialized = false;
     
-    BSW_LOGI(PWM_TAG, "Bitwise PWM driver deinitialized");
+    BSW_LOGI(PWM_TAG, "Software PWM driver deinitialized");
     return ESP_OK;
 }
 

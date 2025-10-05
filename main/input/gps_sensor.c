@@ -70,7 +70,8 @@ esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t port, bsw_gpio_num_t
     gps->data.fix_valid = false;
     gps->data.initialized = false;
 
-    esp_err_t ret = uart_driver_init(port, tx_pin, rx_pin, baudrate);
+    // CRITICAL: Argument order is (port, baudrate, tx_pin, rx_pin)
+    esp_err_t ret = uart_driver_init(port, baudrate, tx_pin, rx_pin);
     if (ret != ESP_OK) {
         return ret;
     }

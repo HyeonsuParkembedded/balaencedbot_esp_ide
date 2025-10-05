@@ -86,11 +86,15 @@ static void ble_on_sync(void)
 {
     BSW_LOGI(TAG, "NimBLE stack synchronized");
     
-    // Set device address
-    int rc = ble_hs_id_infer_auto(0, NULL);
+    // Set device address - must provide valid address type pointer
+    uint8_t addr_type = 0;
+    int rc = ble_hs_id_infer_auto(0, &addr_type);
     if (rc != 0) {
         BSW_LOGE(TAG, "Failed to determine address type: %d", rc);
+        return;
     }
+    
+    BSW_LOGI(TAG, "BLE address type determined: %d", addr_type);
 }
 
 /**
