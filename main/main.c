@@ -13,8 +13,8 @@
  * - 안전한 상태 머신 관리
  * 
  * 태스크 구조:
- * - sensor_task: 센서 데이터 수집 및 필터링(50Hz)
- * - balance_task: PID 제어 및 모터 제어 (50Hz)
+ * - sensor_task: 센서 데이터 수집 및 필터링(100Hz)
+ * - balance_task: PID 제어 및 모터 제어 (100Hz)
  * - status_task: 상태 모니터링 및 BLE 통신 (1Hz)
  * 
  * @author Hyeonsu Park, Suyong Kim
@@ -540,7 +540,7 @@ static void initialize_robot(void) {
  * @brief 센서 데이터 수집 태스크
  * @param pvParameters FreeRTOS 태스크 파라미터 (사용안함)
  * 
- * 50Hz 주기로 실행되며 다음 작업을 수행합니다:
+ * 100Hz 주기로 실행되며 다음 작업을 수행합니다:
  * - IMU 센서 데이터 읽기 및 칼만 필터링
  * - GPS 데이터 업데이트
  * - 엔코더 속도 계산
@@ -598,7 +598,7 @@ static void sensor_task(void *pvParameters) {
  * @brief 밸런싱 제어 태스크
  * @param pvParameters FreeRTOS 태스크 파라미터 (사용안함)
  * 
- * 50Hz 주기로 실행되며 다음 작업을 수행합니다:
+ * 100Hz 주기로 실행되며 다음 작업을 수행합니다:
  * - 상태 머신 업데이트 및 상태 전환 처리
  * - 현재 상태에 따른 제어 로직 실행
  * - PID 제어 계산 (밸런싱 상태에서)

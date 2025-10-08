@@ -82,5 +82,5 @@
     "string.h": "c",
     "error_recovery.h": "c"
   },
-  "idf.flashType": "UART"
+  "idf.flashType": "JTAG"
 }

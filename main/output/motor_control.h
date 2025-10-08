@@ -59,7 +59,7 @@ esp_err_t motor_control_init(motor_control_t* motor,
  * 양수값은 전진, 음수값은 후진을 의미합니다.
  * 
  * @param motor 모터 제어 구조체 포인터
- * @param speed 모터 속도 (-100 ~ +100)
+ * @param speed 모터 속도 (-255 ~ +255)
  *              - 양수: 전진 (pin_a=HIGH, pin_b=LOW)
  *              - 음수: 후진 (pin_a=LOW, pin_b=HIGH)
  *              - 0: 정지

@@ -249,7 +249,7 @@ extern "C" {
 // Communication Configuration
 // ========================================
 
-#define CONFIG_BLE_DEVICE_NAME          "BalanceBot" ///< BLE 광고 디바이스 이름
+#define CONFIG_BLE_DEVICE_NAME          "BalanceBot-C6" ///< BLE 광고 디바이스 이름
 #define CONFIG_STATUS_BUFFER_SIZE       128          ///< 상태 메시지 버퍼 크기 (bytes)
 
 /** @} */ // COMM_CONFIG

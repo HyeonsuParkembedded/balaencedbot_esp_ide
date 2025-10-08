@@ -91,7 +91,7 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
 
     // 명령 특성 추가
     bsw_ble_uuid_t cmd_uuid = ble_uuid_from_128(command_char_uuid);
-    ble_char_properties_t cmd_props = { .read = true, .write = true, .notify = false, .indicate = false };
+    ble_char_properties_t cmd_props = { .read = false, .write = true, .notify = false, .indicate = false };
     ret = ble_add_characteristic(ble->service_handle, &cmd_uuid,
                                 &cmd_props,
                                 &ble->command_char_handle) ? ESP_OK : ESP_FAIL;
@@ -335,4 +335,3 @@ const char* ble_controller_get_text_command(ble_controller_t* ble) {
     
     return ble->last_command;
 }
-

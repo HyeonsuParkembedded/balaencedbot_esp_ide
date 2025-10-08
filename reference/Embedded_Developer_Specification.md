@@ -47,9 +47,12 @@
 
 ### 스레드 모델
 
-- **Main Task**: 100Hz 제어 루프 (FreeRTOS 우선순위 5)
-- **BLE Task**: NimBLE 스택 이벤트 처리 (우선순위 4)
-- **Config Task**: NVS 저장 작업 (우선순위 3)
+실제 구현된 태스크:
+- **sensor_task**: 센서 데이터 수집 및 필터링 (100Hz, FreeRTOS 우선순위 5)
+- **balance_task**: PID 제어 및 모터 제어 (100Hz, 우선순위 4)
+- **status_task**: 상태 모니터링 및 BLE 통신 (1Hz, 우선순위 3)
+
+추가로 NimBLE 스택은 내부적으로 자체 태스크를 생성하여 BLE 이벤트를 처리합니다.
 
 ---
 
@@ -250,13 +253,12 @@ void handle_text_commands() {
 #### 프로토콜 헤더 (8바이트)
 ```c
 typedef struct __attribute__((packed)) {
-    uint8_t start_marker;       ///< 시작 마커 (0xAA)
-    uint8_t version;           ///< 프로토콜 버전 (0x01)
+    uint8_t start_marker;       ///< 시작 마커 (항상 0xAA)
+    uint8_t version;           ///< 프로토콜 버전
     uint8_t msg_type;          ///< 메시지 타입
-    uint8_t payload_len;       ///< 페이로드 길이
-    uint16_t sequence_num;     ///< 시퀀스 번호
-    uint8_t flags;             ///< 제어 플래그
-    uint8_t checksum;          ///< 체크섬
+    uint8_t seq_num;           ///< 시퀀스 번호
+    uint16_t payload_len;      ///< 페이로드 길이
+    uint16_t checksum;         ///< CRC16 체크섬
 } protocol_header_t;
 ```
 
@@ -618,28 +620,28 @@ void handle_text_commands(void) {
         const char* text_cmd = ble_controller_get_text_command(&ble_ctrl);
         if (text_cmd != NULL) {
             esp_err_t ret = config_manager_handle_ble_command(text_cmd);
+            
+            // config_manager_handle_ble_command 함수 내부에서 NVS 저장이 성공하면
+            // 메인 로직에서 즉시 파라미터를 다시 로드하여 적용해야 합니다.
+            // 아래는 main.c의 실제 구현 예시입니다.
             if (ret == ESP_OK) {
-                // 업데이트된 파라미터 적용
-                apply_updated_parameters();
-                ESP_LOGI(TAG, "파라미터 업데이트 완료: %s", text_cmd);
+                const tuning_params_t* params = config_manager_get_params();
+                if (params) {
+                    // PID 및 칼만 필터에 실시간으로 업데이트된 파라미터 적용
+                    balance_pid_set_balance_tunings(&balance_pid, params->balance_kp, params->balance_ki, params->balance_kd);
+                    balance_pid_set_velocity_tunings(&balance_pid, params->velocity_kp, params->velocity_ki, params->velocity_kd);
+                    balance_pid_set_max_tilt_angle(&balance_pid, params->max_tilt_angle);
+                    
+                    // 칼만 필터 파라미터 실시간 적용
+                    kalman_pitch.Q_angle = params->kalman_q_angle;
+                    kalman_pitch.Q_bias = params->kalman_q_bias;
+                    kalman_pitch.R_measure = params->kalman_r_measure;
+                    
+                    ESP_LOGI(TAG, "실시간 파라미터 적용 완료: %s", text_cmd);
+                }
             }
         }
     }
-}
-
-void apply_updated_parameters(void) {
-    tuning_params_t* params = config_manager_get_tuning_params();
-    
-    // PID 게인 업데이트
-    pid_set_gains(&balance_pid, params->balance_kp, params->balance_ki, params->balance_kd);
-    pid_set_gains(&velocity_pid, params->velocity_kp, params->velocity_ki, params->velocity_kd);
-    
-    // 칼만 필터 노이즈 파라미터 업데이트
-    kalman_set_noise_params(&kalman_filter, params->kalman_q_angle, 
-                           params->kalman_q_bias, params->kalman_r_measure);
-    
-    // 안전 임계값 업데이트
-    set_safety_thresholds(params->max_tilt_angle, params->fallen_threshold);
 }
 ```
 
