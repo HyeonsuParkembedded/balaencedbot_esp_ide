@@ -1,7 +1,7 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
   "idf.espIdfPathWin": "C:\\Users\\hyuns\\esp\\v5.5\\esp-idf",
-  "idf.pythonInstallPath": "C:\\Users\\hyuns\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
+  "idf.pythonInstallPath": "/home/hyunsu5203/.espressif/python_env/idf6.0_py3.12_env/bin/python",
   "idf.openOcdConfigs": [
     "board/esp32c6-builtin.cfg"
   ],

@@ -152,8 +152,8 @@ esp_err_t bsw_adc_init(void) {
     // Configure power and clock
     adc_configure_power_clock();
     
-    // Wait for ADC to stabilize
-    esp_rom_delay_us(100);
+    // Wait for ADC to stabilize (FreeRTOS-safe delay)
+    vTaskDelay(pdMS_TO_TICKS(1));  // 1ms is sufficient for ADC stabilization
     
     adc_initialized = true;
     

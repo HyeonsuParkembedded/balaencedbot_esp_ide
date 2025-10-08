@@ -223,6 +223,17 @@ esp_err_t bsw_gpio_set_direction(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode) 
         return ret;
     }
     
+    // Mutex protection for Read-Modify-Write operations
+    if (gpio_mutex == NULL) {
+        BSW_LOGE(TAG, "GPIO not initialized, call bsw_gpio_init() first");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    if (xSemaphoreTake(gpio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        BSW_LOGE(TAG, "Failed to acquire GPIO mutex");
+        return ESP_ERR_TIMEOUT;
+    }
+    
     uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     uint32_t reg_val = REG_READ(pin_reg_addr);
     
@@ -265,6 +276,7 @@ esp_err_t bsw_gpio_set_direction(bsw_gpio_num_t gpio_num, bsw_gpio_mode_t mode) 
             break;
     }
     
+    xSemaphoreGive(gpio_mutex);
     return ESP_OK;
 }
 
@@ -286,6 +298,17 @@ esp_err_t bsw_gpio_set_pull_mode(bsw_gpio_num_t gpio_num, bsw_gpio_pull_mode_t p
         return ret;
     }
     
+    // Mutex protection for Read-Modify-Write operations
+    if (gpio_mutex == NULL) {
+        BSW_LOGE(TAG, "GPIO not initialized, call bsw_gpio_init() first");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    if (xSemaphoreTake(gpio_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        BSW_LOGE(TAG, "Failed to acquire GPIO mutex");
+        return ESP_ERR_TIMEOUT;
+    }
+    
     // GPIO_PIN_N_REG 레지스터를 통한 풀업/풀다운 설정
     uint32_t pin_reg_addr = GPIO_PIN_N_REG(gpio_num);
     uint32_t reg_val = REG_READ(pin_reg_addr);
@@ -303,6 +326,7 @@ esp_err_t bsw_gpio_set_pull_mode(bsw_gpio_num_t gpio_num, bsw_gpio_pull_mode_t p
     
     REG_WRITE(pin_reg_addr, reg_val);
     
+    xSemaphoreGive(gpio_mutex);
     return ESP_OK;
 }
 

@@ -280,7 +280,7 @@ void bsw_system_restart(void) {
  * 
  * 시스템 레지스터에서 마지막 리셋 원인을 읽어옵니다.
  */
-bsw_reset_reason_t bsw_get_reset_reason_bitwise(void) {
+bsw_reset_reason_t bsw_get_reset_reason(void) {
     // 시스템 리셋 원인 레지스터 읽기 (가상 구현)
     uint32_t reset_reason_reg = BSW_SYS_REG_READ(BSW_SYSTEM_RST_EN);
     

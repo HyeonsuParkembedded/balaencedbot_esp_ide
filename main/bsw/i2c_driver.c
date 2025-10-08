@@ -265,7 +265,8 @@ esp_err_t i2c_bus_recovery(bsw_i2c_port_t port) {
 static void i2c_hw_reset(uint32_t base) {
     // Reset FIFO
     I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));  // TX/RX FIFO reset
-    esp_rom_delay_us(10);
+    // Use FreeRTOS-safe delay instead of CPU blocking
+    vTaskDelay(pdMS_TO_TICKS(1));  // Minimum 1ms for hardware stabilization
     I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
     
     // Clear all interrupts
@@ -431,7 +432,8 @@ esp_err_t i2c_write_register(bsw_i2c_port_t port, uint8_t device_addr, uint8_t r
     
     // Reset FIFO
     I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0));  // TX FIFO reset
-    esp_rom_delay_us(1);
+    // Use taskYIELD for minimal FreeRTOS-safe delay
+    taskYIELD();  // Allow other tasks to run instead of CPU blocking
     I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0));
     
     // Write data to TX FIFO: device address + W, register address, data value
@@ -542,7 +544,8 @@ static esp_err_t i2c_read_register_internal(bsw_i2c_port_t port, uint8_t device_
     
     // Reset FIFO
     I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));  // TX/RX FIFO reset
-    esp_rom_delay_us(1);
+    // Use taskYIELD for minimal FreeRTOS-safe delay
+    taskYIELD();  // Allow other tasks to run instead of CPU blocking
     I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
     
     // Phase 1: Write register address
@@ -663,7 +666,8 @@ static esp_err_t i2c_write_raw_internal(bsw_i2c_port_t port, uint8_t device_addr
     
     // Reset FIFO
     I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
-    esp_rom_delay_us(1);
+    // Use taskYIELD for minimal FreeRTOS-safe delay
+    taskYIELD();  // Allow other tasks to run instead of CPU blocking
     I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
     
     // Write device address + W to FIFO
@@ -770,7 +774,8 @@ static esp_err_t i2c_read_raw_internal(bsw_i2c_port_t port, uint8_t device_addr,
     
     // Reset FIFO
     I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
-    esp_rom_delay_us(1);
+    // Use taskYIELD for minimal FreeRTOS-safe delay
+    taskYIELD();  // Allow other tasks to run instead of CPU blocking
     I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
     
     // Write device address + R to FIFO
@@ -845,7 +850,8 @@ esp_err_t i2c_driver_deinit(bsw_i2c_port_t port) {
         
         // Reset FIFO
         I2C_SET_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
-        esp_rom_delay_us(1);
+        // Use taskYIELD for minimal FreeRTOS-safe delay
+        taskYIELD();  // Allow other tasks to run instead of CPU blocking
         I2C_CLEAR_BITS(base, I2C_FIFO_CONF_REG_OFFSET, (1U << 0) | (1U << 1));
         
         // Disable all interrupts
