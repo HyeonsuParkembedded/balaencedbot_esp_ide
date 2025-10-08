@@ -6,7 +6,7 @@
  * 바이너리 프로토콜을 정의합니다. 안전하고 효율적인 통신을 제공합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-09-20
+ * @date 2025-10-08
  * @version 1.0
  */
 

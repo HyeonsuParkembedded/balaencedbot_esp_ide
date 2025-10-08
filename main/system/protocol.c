@@ -6,7 +6,7 @@
  * 체크섬 계산 기능을 구현합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-09-20
+ * @date 2025-10-08
  * @version 1.0
  */
 

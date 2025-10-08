@@ -7,7 +7,7 @@
  * BSW 추상화 계층을 사용하여 하드웨어 독립성을 보장합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim
- * @date 2025-09-24
+ * @date 2025-10-08
  * @version 2.0
  */
 
