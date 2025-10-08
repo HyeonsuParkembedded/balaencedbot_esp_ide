@@ -79,6 +79,8 @@ typedef enum {
     BSW_PWM_CHANNEL_1,
     BSW_PWM_CHANNEL_2,
     BSW_PWM_CHANNEL_3,
+    BSW_PWM_CHANNEL_4,
+    BSW_PWM_CHANNEL_5,
     BSW_PWM_CHANNEL_MAX
 } bsw_pwm_channel_t;
 

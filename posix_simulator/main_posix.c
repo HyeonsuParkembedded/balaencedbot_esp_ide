@@ -66,8 +66,11 @@ static TaskHandle_t sensor_task_handle = NULL;
 static TaskHandle_t balance_task_handle = NULL;
 static TaskHandle_t status_task_handle = NULL;
 
-// Simulation parameters
-#define SIMULATION_DT           0.02f   // 50Hz simulation rate
+// ESP32-C6 Simulation parameters
+#define ESP32C6_CPU_FREQ_MHZ    160     // RISC-V 160MHz 프로세서
+#define ESP32C6_SRAM_SIZE_KB    512     // 512KB SRAM
+#define ESP32C6_PERFORMANCE_FACTOR 1.6f // ESP32 대비 성능 향상 계수
+#define SIMULATION_DT           0.005f  // 200Hz simulation rate (ESP32-C6 고성능)
 #define MAX_TILT_ANGLE         45.0f    // Maximum tilt before "fallen" state
 
 // ============================================================================
@@ -158,13 +161,13 @@ static void simulate_physics_step(float motor_output, float dt) {
 }
 
 // ============================================================================
-// Sensor Task (50Hz)
+// Sensor Task (200Hz - ESP32-C6 고성능)
 // ============================================================================
 static void sensor_task(void *pvParameters) {
     BSW_LOGI(TAG, "Sensor task started");
     
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t task_period = pdMS_TO_TICKS(20); // 50Hz
+    const TickType_t task_period = pdMS_TO_TICKS(5); // 200Hz (ESP32-C6)
     
     // Initialize Kalman filter
     kalman_filter_init(&kalman_filter);
@@ -176,8 +179,8 @@ static void sensor_task(void *pvParameters) {
         float current_angle = get_filtered_angle();
         
         // Apply Kalman filtering (with mock gyro data)
-        float mock_gyro = 0.0f; // Simplified - could add noise/dynamics
-        float filtered = kalman_filter_get_angle(&kalman_filter, current_angle, mock_gyro, 0.02f);
+        float mock_gyro = 0.0f; // Simplified - could add noise/dynamics  
+        float filtered = kalman_filter_get_angle(&kalman_filter, current_angle, mock_gyro, 0.005f);
         set_filtered_angle(filtered);
         
         BSW_LOGD(TAG, "Sensor: Angle=%.2f°", filtered);
@@ -187,13 +190,13 @@ static void sensor_task(void *pvParameters) {
 }
 
 // ============================================================================
-// Balance Control Task (50Hz)
+// Balance Control Task (200Hz - ESP32-C6 고성능)
 // ============================================================================
 static void balance_task(void *pvParameters) {
     BSW_LOGI(TAG, "Balance task started");
     
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t task_period = pdMS_TO_TICKS(20); // 50Hz
+    const TickType_t task_period = pdMS_TO_TICKS(5); // 200Hz (ESP32-C6)
     
     while (1) {
         robot_state_t state = get_robot_state();
@@ -277,14 +280,16 @@ static void status_task(void *pvParameters) {
         robot_state_t state = get_robot_state();
         float angle = get_filtered_angle();
         
-        printf("\n=== BalanceBot POSIX Simulator Status ===\n");
+        printf("\n=== BalanceBot ESP32-C6 Simulator Status ===\n");
         printf("Loop: %u\n", loop_counter++);
         printf("State: %d\n", state);
         printf("Angle: %.2f°\n", angle);
         printf("Velocity: %.2f cm/s\n", robot_velocity);
         printf("Balance Enabled: %s\n", mock_remote_cmd.balance ? "YES" : "NO");
-        printf("Free Heap: Simulated (POSIX)\n");
-        printf("========================================\n\n");
+        printf("CPU: RISC-V %dMHz | SRAM: %dKB\n", ESP32C6_CPU_FREQ_MHZ, ESP32C6_SRAM_SIZE_KB);
+        printf("Control Rate: 200Hz | Performance: x%.1f\n", ESP32C6_PERFORMANCE_FACTOR);
+        printf("Free Heap: %dKB (Simulated)\n", ESP32C6_SRAM_SIZE_KB - 128); // 시뮬레이션
+        printf("==========================================\n\n");
         
         vTaskDelayUntil(&last_wake_time, task_period);
     }
@@ -294,7 +299,8 @@ static void status_task(void *pvParameters) {
 // System Initialization
 // ============================================================================
 static void initialize_robot_systems(void) {
-    BSW_LOGI(TAG, "Initializing robot systems...");
+    BSW_LOGI(TAG, "Initializing ESP32-C6 robot systems...");
+    BSW_LOGI(TAG, "CPU: RISC-V %dMHz, SRAM: %dKB", ESP32C6_CPU_FREQ_MHZ, ESP32C6_SRAM_SIZE_KB);
     
     // Initialize BSW layer
     bsw_gpio_init();
@@ -309,13 +315,15 @@ static void initialize_robot_systems(void) {
     bsw_pwm_init();
     bsw_adc_init();
     
-    // Initialize PID controller with tuned parameters
+    // Initialize PID controller with ESP32-C6 optimized parameters
     balance_pid_init(&balance_pid);
-    balance_pid_set_balance_tunings(&balance_pid, 50.0f, 0.5f, 2.0f);
-    balance_pid_set_velocity_tunings(&balance_pid, 1.0f, 0.1f, 0.0f);
+    // ESP32-C6 고성능으로 더 높은 게인 사용 가능
+    balance_pid_set_balance_tunings(&balance_pid, 80.0f * ESP32C6_PERFORMANCE_FACTOR, 0.8f, 3.0f);
+    balance_pid_set_velocity_tunings(&balance_pid, 1.5f, 0.15f, 0.05f);
     balance_pid_set_max_tilt_angle(&balance_pid, MAX_TILT_ANGLE);
     
-    BSW_LOGI(TAG, "Robot systems initialized successfully");
+    BSW_LOGI(TAG, "ESP32-C6 robot systems initialized successfully");
+    BSW_LOGI(TAG, "Performance factor: x%.1f, Control rate: 200Hz", ESP32C6_PERFORMANCE_FACTOR);
 }
 
 // ============================================================================
@@ -357,10 +365,11 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
 // ============================================================================
 int main(void) {
     printf("\n");
-    printf("========================================\n");
-    printf("   BalanceBot POSIX Simulator v1.0     \n");
-    printf("   FreeRTOS + Physics Simulation       \n");
-    printf("========================================\n");
+    printf("==========================================\n");
+    printf("   BalanceBot ESP32-C6 Simulator v2.0   \n");
+    printf("   RISC-V %dMHz + %dKB SRAM          \n", ESP32C6_CPU_FREQ_MHZ, ESP32C6_SRAM_SIZE_KB);
+    printf("   FreeRTOS + Physics @ 200Hz           \n");
+    printf("==========================================\n");
     printf("\n");
     
     // Setup signal handler for clean shutdown

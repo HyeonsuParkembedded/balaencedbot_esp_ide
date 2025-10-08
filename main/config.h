@@ -223,12 +223,12 @@ extern "C" {
 /** @} */
 
 /**
- * @defgroup TASK_UPDATE_CONFIG 태스크 업데이트 주기 설정
- * @brief 각 태스크의 실행 주기 (밀리초)
+ * @defgroup TASK_UPDATE_CONFIG 태스크 업데이트 주기 설정 (ESP32-C6 최적화)
+ * @brief ESP32-C6 RISC-V 160MHz 성능에 최적화된 실행 주기 (밀리초)
  * @{
  */
-#define CONFIG_SENSOR_UPDATE_RATE       20           ///< 센서 업데이트 주기 (ms) - 50Hz
-#define CONFIG_BALANCE_UPDATE_RATE      20           ///< 밸런싱 업데이트 주기 (ms) - 50Hz
+#define CONFIG_SENSOR_UPDATE_RATE       5            ///< 센서 업데이트 주기 (ms) - 200Hz (ESP32-C6 고성능)
+#define CONFIG_BALANCE_UPDATE_RATE      5            ///< 밸런싱 업데이트 주기 (ms) - 200Hz (실시간 제어)
 #define CONFIG_STATUS_UPDATE_RATE       1000         ///< 상태 업데이트 주기 (ms) - 1Hz
 /** @} */
 
@@ -250,6 +250,21 @@ extern "C" {
 /** @} */ // COMM_CONFIG
 
 /**
+ * @defgroup ESP32C6_SPECS ESP32-C6 하드웨어 스펙
+ * @brief ESP32-C6 RISC-V 프로세서의 하드웨어 성능 특성
+ * @{
+ */
+#define ESP32C6_CPU_FREQ_MHZ           160           ///< RISC-V 프로세서 클럭 주파수 (MHz)
+#define ESP32C6_SRAM_SIZE_KB           512           ///< 내부 SRAM 크기 (KB)
+#define ESP32C6_FLASH_SIZE_MB          4             ///< 플래시 메모리 크기 (MB)
+#define ESP32C6_LEDC_CHANNELS          6             ///< LEDC PWM 채널 수
+#define ESP32C6_LEDC_TIMERS            4             ///< LEDC 타이머 수
+#define ESP32C6_LEDC_MAX_RESOLUTION    20            ///< LEDC 최대 해상도 (비트)
+#define ESP32C6_ADC_CHANNELS           7             ///< ADC 채널 수
+#define ESP32C6_GPIO_COUNT             31            ///< 사용 가능한 GPIO 핀 수
+/** @} */
+
+/**
  * @defgroup SYSTEM_CONFIG 시스템 설정
  * @brief 시스템 레벨 설정 및 오류 복구 파라미터
  * @{
@@ -262,6 +277,7 @@ extern "C" {
 #define CONFIG_WATCHDOG_TIMEOUT_MS      5000         ///< 워치독 타임아웃 (ms)
 #define CONFIG_MAX_INIT_RETRIES         3            ///< 초기화 최대 재시도 횟수
 #define CONFIG_ERROR_RECOVERY_DELAY     1000         ///< 오류 복구 지연 시간 (ms)
+#define CONFIG_ESP32C6_PERFORMANCE_MODE 1            ///< ESP32-C6 고성능 모드 활성화
 
 /** @} */ // SYSTEM_CONFIG
 
