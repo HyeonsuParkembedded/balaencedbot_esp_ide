@@ -1,0 +1,12 @@
+# BalanceBot 실시간 데이터 플로터 의존성
+# 설치 방법: pip install -r requirements.txt
+
+# 시리얼 통신
+pyserial>=3.5
+
+# 그래프 및 시각화
+matplotlib>=3.5.0
+numpy>=1.21.0
+
+# 선택적 (성능 향상)
+scipy>=1.7.0

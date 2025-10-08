@@ -35,11 +35,6 @@
 #include "bsw/system_services.h"
 #include "bsw/i2c_driver.h"
 
-// 순수 비트연산 GPIO 제어 예제 함수들 (현재 비활성화)
-// extern void demo_bitwise_gpio_control(void);
-// extern void analyze_register_differences(void);
-// extern void performance_test_bitwise_gpio(void);
-
 #include "input/imu_sensor.h"
 #include "logic/kalman_filter.h"
 #include "input/gps_sensor.h"
