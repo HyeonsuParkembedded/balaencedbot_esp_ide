@@ -1,0 +1,101 @@
+timestamp,elapsed,raw_data
+17:42:27.162,0.002,
+17:42:27.162,0.002,==========================================
+17:42:27.162,0.002,BalanceBot ESP32-C6 Simulator v2.0
+17:42:27.162,0.002,RISC-V 160MHz + 512KB SRAM
+17:42:27.162,0.002,FreeRTOS + Physics @ 200Hz
+17:42:27.162,0.002,==========================================
+17:42:27.162,0.002,
+17:42:27.162,0.002,=== 키보드 조작법 ===
+17:42:27.162,0.002,↑: 앞으로      ↓: 뒤로
+17:42:27.162,0.002,←: 왼쪽 회전   →: 오른쪽 회전
+17:42:27.162,0.002,SPACE: 밸런싱 토글
+17:42:27.162,0.002,s: 정지        q: 종료
+17:42:27.162,0.003,==================
+17:42:27.162,0.003,
+17:42:27.162,0.003,[MOCK_NVS] Flash initialized
+17:42:27.162,0.003,[INFO][POSIX_SIM] Initializing ESP32-C6 robot systems...
+17:42:27.162,0.003,"[INFO][POSIX_SIM] CPU: RISC-V 160MHz, SRAM: 512KB"
+17:42:27.162,0.003,"[WARN][CONFIG_MOCK] Config file not found, using defaults"
+17:42:27.162,0.003,[INFO][CONFIG_MOCK] Config manager initialized (POSIX Mock)
+17:42:27.163,0.003,[INFO][BLE_MOCK] BLE Controller Mock initialized (BalanceBot-C6-Sim)
+17:42:27.163,0.003,"[INFO][BLE_MOCK] Commands: 'w'=forward, 's'=backward, 'a'=left, 'd'=right, ' '=stop"
+17:42:27.163,0.003,"[INFO][BLE_MOCK] Text commands: 'SET 0 25.5', 'GET 0', 'SAVE', 'RESET'"
+17:42:27.163,0.003,[INFO][MOCK_GPIO] GPIO subsystem initialized
+17:42:27.163,0.003,"[MOCK_I2C] Config I2C0: SDA=21, SCL=22, Speed=400000"
+17:42:27.163,0.003,[MOCK_I2C] Install I2C0 driver
+17:42:27.163,0.003,"[INFO][MOCK_I2C] I2C0 initialized (SDA=21, SCL=22, Speed=400000)"
+17:42:27.163,0.003,[INFO][MOCK_PWM] PWM subsystem initialized
+17:42:27.163,0.003,[INFO][MOCK_ADC] ADC subsystem initialized
+17:42:27.163,0.003,[INFO][POSIX_SIM] ESP32-C6 robot systems initialized successfully
+17:42:27.163,0.003,"[INFO][POSIX_SIM] Balance PID: Kp=25.00, Ki=0.50, Kd=0.80"
+17:42:27.163,0.003,"[INFO][POSIX_SIM] Performance factor: x1.6, Control rate: 200Hz"
+17:42:27.163,0.003,[POSIX_SIM] All tasks created successfully
+17:42:27.163,0.003,[POSIX_SIM] Starting FreeRTOS scheduler...
+17:42:27.163,0.003,[POSIX_SIM] Use arrow keys to control the robot!
+17:42:27.163,0.003,[POSIX_SIM] Press 'q' to quit
+17:42:27.163,0.003,
+17:42:27.163,0.003,[WARN] pthread_attr_setstack failed with return value: 22. Default stack will be used.
+17:42:27.163,0.003,[WARN] Increase the stack size to PTHREAD_STACK_MIN.
+17:42:27.163,0.003,[WARN] pthread_attr_setstack failed with return value: 22. Default stack will be used.
+17:42:27.163,0.003,[WARN] Increase the stack size to PTHREAD_STACK_MIN.
+17:42:27.163,0.003,[INFO][POSIX_SIM] Sensor task started
+17:42:27.163,0.003,[DEBUG][POSIX_SIM] Sensor: Angle=0.00°
+17:42:27.163,0.003,[INFO][POSIX_SIM] Balance task started
+17:42:27.163,0.003,[POSIX_SIM] State change: 0 -> 1
+17:42:27.163,0.003,[INFO][POSIX_SIM] BLE task started
+17:42:27.163,0.003,[INFO][POSIX_SIM] Status task started
+17:42:27.163,0.004,
+17:42:27.163,0.004,=== BalanceBot ESP32-C6 Simulator Status ===
+17:42:27.163,0.004,Loop: 0
+17:42:27.163,0.004,State: 1
+17:42:27.163,0.004,Angle: 5.72°
+17:42:27.163,0.004,Velocity: -0.22 cm/s
+17:42:27.163,0.004,Balance Enabled: YES
+17:42:27.163,0.004,CPU: RISC-V 160MHz | SRAM: 512KB
+17:42:27.163,0.004,Control Rate: 200Hz | Performance: x1.6
+17:42:27.163,0.004,Free Heap: 384KB (Simulated)
+17:42:27.163,0.004,==========================================
+17:42:27.163,0.004,
+17:42:27.163,0.004,[INFO][POSIX_SIM] Keyboard task started
+17:42:27.167,0.008,[DEBUG][POSIX_SIM] Sensor: Angle=0.00°
+17:42:27.167,0.008,[POSIX_SIM] State change: 1 -> 2
+17:42:27.172,0.013,[DEBUG][POSIX_SIM] Sensor: Angle=0.00°
+17:42:27.173,0.013,"[DEBUG][POSIX_SIM] Balance: Angle=0.00°, Output=0.00"
+17:42:27.177,0.018,[DEBUG][POSIX_SIM] Sensor: Angle=0.01°
+17:42:27.178,0.018,"[DEBUG][POSIX_SIM] Balance: Angle=0.01°, Output=130.70"
+17:42:27.182,0.023,[DEBUG][POSIX_SIM] Sensor: Angle=0.01°
+17:42:27.182,0.023,"[DEBUG][POSIX_SIM] Balance: Angle=0.01°, Output=-13.88"
+17:42:27.187,0.028,[DEBUG][POSIX_SIM] Sensor: Angle=0.02°
+17:42:27.187,0.028,"[DEBUG][POSIX_SIM] Balance: Angle=0.02°, Output=56.49"
+17:42:27.192,0.033,[DEBUG][POSIX_SIM] Sensor: Angle=0.03°
+17:42:27.192,0.033,"[DEBUG][POSIX_SIM] Balance: Angle=0.03°, Output=22.03"
+17:42:27.197,0.038,[DEBUG][POSIX_SIM] Sensor: Angle=0.03°
+17:42:27.197,0.038,"[DEBUG][POSIX_SIM] Balance: Angle=0.03°, Output=38.43"
+17:42:27.202,0.043,[DEBUG][POSIX_SIM] Sensor: Angle=0.04°
+17:42:27.202,0.043,"[DEBUG][POSIX_SIM] Balance: Angle=0.04°, Output=29.91"
+17:42:27.207,0.048,[DEBUG][POSIX_SIM] Sensor: Angle=0.05°
+17:42:27.208,0.048,"[DEBUG][POSIX_SIM] Balance: Angle=0.05°, Output=33.38"
+17:42:27.212,0.053,[DEBUG][POSIX_SIM] Sensor: Angle=0.06°
+17:42:27.212,0.053,"[DEBUG][POSIX_SIM] Balance: Angle=0.06°, Output=30.88"
+17:42:27.217,0.058,[DEBUG][POSIX_SIM] Sensor: Angle=0.07°
+17:42:27.217,0.058,"[DEBUG][POSIX_SIM] Balance: Angle=0.07°, Output=31.16"
+17:42:27.222,0.063,[DEBUG][POSIX_SIM] Sensor: Angle=0.08°
+17:42:27.223,0.063,"[DEBUG][POSIX_SIM] Balance: Angle=0.08°, Output=29.99"
+17:42:27.227,0.068,[DEBUG][POSIX_SIM] Sensor: Angle=0.09°
+17:42:27.227,0.068,"[DEBUG][POSIX_SIM] Balance: Angle=0.09°, Output=29.42"
+17:42:27.232,0.073,[DEBUG][POSIX_SIM] Sensor: Angle=0.10°
+17:42:27.232,0.073,"[DEBUG][POSIX_SIM] Balance: Angle=0.10°, Output=28.48"
+17:42:27.237,0.078,[DEBUG][POSIX_SIM] Sensor: Angle=0.11°
+17:42:27.237,0.078,"[DEBUG][POSIX_SIM] Balance: Angle=0.11°, Output=27.64"
+17:42:27.242,0.083,[DEBUG][POSIX_SIM] Sensor: Angle=0.12°
+17:42:27.242,0.083,"[DEBUG][POSIX_SIM] Balance: Angle=0.12°, Output=26.68"
+17:42:27.247,0.088,[DEBUG][POSIX_SIM] Sensor: Angle=0.14°
+17:42:27.247,0.088,"[DEBUG][POSIX_SIM] Balance: Angle=0.14°, Output=25.72"
+17:42:27.252,0.093,[DEBUG][POSIX_SIM] Sensor: Angle=0.15°
+17:42:27.257,0.098,"[DEBUG][POSIX_SIM] Balance: Angle=0.15°, Output=24.72"
+17:42:27.258,0.098,[DEBUG][POSIX_SIM] Sensor: Angle=0.16°
+17:42:27.258,0.098,"[DEBUG][POSIX_SIM] Balance: Angle=0.16°, Output=23.69"
+17:42:27.262,0.103,[DEBUG][POSIX_SIM] Sensor: Angle=0.17°
+17:42:27.262,0.103,"[DEBUG][POSIX_SIM] Balance: Angle=0.17°, Output=22.64"
+17:42:27.267,0.108,[DEBUG][POSIX_SIM] Sensor: Angle=0.19°

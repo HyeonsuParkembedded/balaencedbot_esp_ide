@@ -70,9 +70,19 @@ set(MOCK_SOURCES
 
 # BalanceBot logic source files (platform independent)
 set(BALANCEBOT_LOGIC_SOURCES
-    # We'll copy and adapt these files
     logic/pid_controller.c
     logic/kalman_filter.c
+)
+
+# BalanceBot system files (adapted for POSIX)
+set(BALANCEBOT_SYSTEM_SOURCES
+    system/protocol.c
+    system/config_manager_mock.c
+)
+
+# BalanceBot output files (mocked)
+set(BALANCEBOT_OUTPUT_SOURCES
+    output/ble_controller_mock.c
 )
 
 # BalanceBot input/output (mocked)
@@ -91,6 +101,8 @@ set(ALL_SOURCES
     ${FREERTOS_SOURCES}
     ${MOCK_SOURCES}
     ${BALANCEBOT_LOGIC_SOURCES}
+    ${BALANCEBOT_SYSTEM_SOURCES}
+    ${BALANCEBOT_OUTPUT_SOURCES}
     ${BALANCEBOT_IO_SOURCES}
     ${APP_SOURCES}
 )

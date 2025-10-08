@@ -68,6 +68,8 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     ble->current_command.speed = 0;
     ble->current_command.balance = true;
     ble->current_command.standup = false;
+    ble->has_text_command = false;
+    memset(ble->last_command, 0, sizeof(ble->last_command));
     ble->conn_handle = 0;
     ble->service_handle = 0;
     ble->command_char_handle = 0;
@@ -281,11 +283,25 @@ static void ble_event_handler(const ble_event_t* event, void* user_data) {
             BSW_LOGI(TAG, "BLE Data received, length: %d", event->data_received.len);
             // 명령 특성에 데이터가 수신된 경우만 처리
             if (event->data_received.char_handle == ble->command_char_handle) {
-                esp_err_t ret = ble_controller_process_packet(ble,
-                                                            event->data_received.data,
-                                                            event->data_received.len);
-                if (ret != ESP_OK) {
-                    BSW_LOGW(TAG, "Failed to process command packet");
+                // 텍스트 명령인지 바이너리 명령인지 구분
+                if (event->data_received.len > 0 && 
+                    event->data_received.data[0] >= 0x20 && 
+                    event->data_received.data[0] <= 0x7E) {
+                    // ASCII 범위 문자로 시작하면 텍스트 명령으로 판단
+                    size_t copy_len = (event->data_received.len < sizeof(ble->last_command) - 1) ? 
+                                     event->data_received.len : sizeof(ble->last_command) - 1;
+                    memcpy(ble->last_command, event->data_received.data, copy_len);
+                    ble->last_command[copy_len] = '\0';
+                    ble->has_text_command = true;
+                    BSW_LOGI(TAG, "Text command received: %s", ble->last_command);
+                } else {
+                    // 바이너리 프로토콜로 처리
+                    esp_err_t ret = ble_controller_process_packet(ble,
+                                                                event->data_received.data,
+                                                                event->data_received.len);
+                    if (ret != ESP_OK) {
+                        BSW_LOGW(TAG, "Failed to process command packet");
+                    }
                 }
             }
             break;
@@ -294,5 +310,29 @@ static void ble_event_handler(const ble_event_t* event, void* user_data) {
             BSW_LOGD(TAG, "Unknown BLE event: %d", event->type);
             break;
     }
+}
+
+/**
+ * @brief 텍스트 명령이 수신되었는지 확인
+ */
+bool ble_controller_has_text_command(const ble_controller_t* ble) {
+    if (!ble) {
+        return false;
+    }
+    return ble->has_text_command;
+}
+
+/**
+ * @brief 수신된 텍스트 명령 가져오기
+ */
+const char* ble_controller_get_text_command(ble_controller_t* ble) {
+    if (!ble || !ble->has_text_command) {
+        return NULL;
+    }
+    
+    // 플래그 클리어하여 중복 처리 방지
+    ble->has_text_command = false;
+    
+    return ble->last_command;
 }
 

@@ -343,22 +343,34 @@ static esp_err_t init_imu_wrapper(void) {
  * @brief 좌측 엔코더 초기화 래퍼 함수
  * 
  * config.h에 정의된 설정값을 사용하여 좌측 바퀴 엔코더를 초기화하는 래퍼 함수입니다.
+ * CONFIG_ENABLE_LEFT_ENCODER가 정의되어 있을 때만 초기화됩니다.
  * 
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
 static esp_err_t init_left_encoder_wrapper(void) {
+#ifdef CONFIG_ENABLE_LEFT_ENCODER
     return encoder_sensor_init(&left_encoder, CONFIG_LEFT_ENC_A_PIN, CONFIG_LEFT_ENC_B_PIN, CONFIG_ENCODER_PPR, CONFIG_WHEEL_DIAMETER_CM);
+#else
+    BSW_LOGI(TAG, "Left encoder disabled in config.h");
+    return ESP_OK;  // 비활성화된 것도 성공으로 처리
+#endif
 }
 
 /**
  * @brief 우측 엔코더 초기화 래퍼 함수
  * 
  * config.h에 정의된 설정값을 사용하여 우측 바퀴 엔코더를 초기화하는 래퍼 함수입니다.
+ * CONFIG_ENABLE_RIGHT_ENCODER가 정의되어 있을 때만 초기화됩니다.
  * 
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
 static esp_err_t init_right_encoder_wrapper(void) {
+#ifdef CONFIG_ENABLE_RIGHT_ENCODER
     return encoder_sensor_init(&right_encoder, CONFIG_RIGHT_ENC_A_PIN, CONFIG_RIGHT_ENC_B_PIN, CONFIG_ENCODER_PPR, CONFIG_WHEEL_DIAMETER_CM);
+#else
+    BSW_LOGI(TAG, "Right encoder disabled in config.h");
+    return ESP_OK;  // 비활성화된 것도 성공으로 처리
+#endif
 }
 
 /**
@@ -520,21 +532,6 @@ static void initialize_robot(void) {
     balance_pid_set_target_velocity(&balance_pid, 0.0f);  // 정지 상태로 시작
     BSW_LOGI(TAG, "Balance PID controllers initialized with tuned parameters");
     
-    // =====[ 순수 비트연산 GPIO 제어 데모 실행 - 현재 비활성화 ]=====
-    // BSW_LOGI(TAG, "Starting bitwise GPIO control demonstration...");
-    
-    // // 1. 비트연산 GPIO 제어 데모
-    // demo_bitwise_gpio_control();
-    
-    // // 2. 레지스터 제어 방식 비교 분석
-    // analyze_register_differences();
-    
-    // // 3. 성능 테스트
-    // performance_test_bitwise_gpio();
-    
-    // BSW_LOGI(TAG, "Bitwise GPIO demonstration completed!");
-    // ===============================================================
-    
     // Log system health after initialization
     log_system_health();
 }
@@ -559,7 +556,7 @@ static void sensor_task(void *pvParameters) {
         esp_err_t ret = imu_sensor_update(&imu);
         if (ret == ESP_OK) {
             // Apply Kalman filter to pitch angle
-            float dt = 0.02f; // 50Hz update rate
+            float dt = 0.01f; // 100Hz update rate
             set_filtered_angle(kalman_filter_get_angle(&kalman_pitch, 
                                                    imu_sensor_get_pitch(&imu),
                                                    imu_sensor_get_gyro_y(&imu), 
@@ -569,14 +566,31 @@ static void sensor_task(void *pvParameters) {
         // Update GPS
         gps_sensor_update(&gps);
         
-        // Update motor speeds
+        // Update motor speeds (only if enabled)
+        float left_speed = 0.0f, right_speed = 0.0f;
+        
+#ifdef CONFIG_ENABLE_LEFT_ENCODER
         encoder_sensor_update_speed(&left_encoder);
+        left_speed = encoder_sensor_get_speed(&left_encoder);
+#endif
+
+#ifdef CONFIG_ENABLE_RIGHT_ENCODER
         encoder_sensor_update_speed(&right_encoder);
+        right_speed = encoder_sensor_get_speed(&right_encoder);
+#endif
         
-        // Calculate robot velocity (average of both wheels)
-        set_robot_velocity((encoder_sensor_get_speed(&left_encoder) + encoder_sensor_get_speed(&right_encoder)) / 2.0f);
+        // Calculate robot velocity (average of enabled encoders)
+#if defined(CONFIG_ENABLE_LEFT_ENCODER) && defined(CONFIG_ENABLE_RIGHT_ENCODER)
+        set_robot_velocity((left_speed + right_speed) / 2.0f);
+#elif defined(CONFIG_ENABLE_LEFT_ENCODER)
+        set_robot_velocity(left_speed);
+#elif defined(CONFIG_ENABLE_RIGHT_ENCODER)
+        set_robot_velocity(right_speed);
+#else
+        set_robot_velocity(0.0f);  // 엔코더가 모두 비활성화된 경우
+#endif
         
-        vTaskDelay(pdMS_TO_TICKS(20)); // 50Hz
+        vTaskDelay(pdMS_TO_TICKS(10)); // 100Hz
     }
 }
 
@@ -660,7 +674,7 @@ static void balance_task(void *pvParameters) {
             break;
         }
         
-        vTaskDelay(pdMS_TO_TICKS(20)); // 50Hz control loop
+        vTaskDelay(pdMS_TO_TICKS(10)); // 100Hz control loop
     }
 }
 
@@ -785,8 +799,34 @@ static void update_motors(float motor_output, remote_command_t cmd) {
 static void handle_remote_commands(void) {
     remote_command_t cmd = ble_controller_get_command(&ble_controller);
     
-    // TODO: Handle text commands for parameter tuning
-    // Example: Check if BLE received text command and pass to config_manager_handle_ble_command()
+    // Handle text commands for parameter tuning
+    if (ble_controller_has_text_command(&ble_controller)) {
+        const char* text_command = ble_controller_get_text_command(&ble_controller);
+        if (text_command != NULL) {
+            BSW_LOGI(TAG, "Processing text command: %s", text_command);
+            esp_err_t ret = config_manager_handle_ble_command(text_command);
+            if (ret == ESP_OK) {
+                BSW_LOGI(TAG, "Text command processed successfully");
+                // Parameter update successful - reload parameters for active components
+                const tuning_params_t* params = config_manager_get_params();
+                if (params) {
+                    // Update PID parameters in real-time
+                    balance_pid_set_balance_tunings(&balance_pid, params->balance_kp, params->balance_ki, params->balance_kd);
+                    balance_pid_set_velocity_tunings(&balance_pid, params->velocity_kp, params->velocity_ki, params->velocity_kd);
+                    balance_pid_set_max_tilt_angle(&balance_pid, params->max_tilt_angle);
+                    
+                    // Update Kalman filter parameters in real-time
+                    kalman_pitch.Q_angle = params->kalman_q_angle;
+                    kalman_pitch.Q_bias = params->kalman_q_bias;
+                    kalman_pitch.R_measure = params->kalman_r_measure;
+                    
+                    BSW_LOGI(TAG, "Real-time parameter update completed");
+                }
+            } else {
+                BSW_LOGE(TAG, "Failed to process text command: %d", ret);
+            }
+        }
+    }
     
     // Handle standup command
     if (cmd.standup && !servo_standup_is_standing_up(&servo_standup)) {

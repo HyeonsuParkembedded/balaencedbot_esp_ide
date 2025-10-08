@@ -38,12 +38,7 @@ bsw_err_t motor_control_stop(void* motor) {
     return BSW_OK;
 }
 
-// BLE Controller Mock
-bsw_err_t ble_controller_init(void* ble) {
-    BSW_LOGI("MOCK_BLE", "BLE controller initialized");
-    return BSW_OK;
-}
-bsw_err_t ble_controller_update(void* ble) { return BSW_OK; }
+// BLE Controller Mock - removed, using separate implementation
 
 // Servo Standup Mock
 bsw_err_t servo_standup_init(void* servo) {
@@ -59,8 +54,4 @@ bsw_err_t error_recovery_init(void) {
     return BSW_OK;
 }
 
-// Config Manager Mock  
-bsw_err_t config_manager_init(void) {
-    BSW_LOGI("MOCK_CFG", "Config manager initialized");
-    return BSW_OK;
-}
+// Config Manager Mock - removed, using separate implementation

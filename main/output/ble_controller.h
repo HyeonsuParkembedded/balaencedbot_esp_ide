@@ -60,6 +60,7 @@ typedef struct {
     bool device_connected;           ///< 기기 연결 상태
     remote_command_t current_command; ///< 현재 수신된 명령
     char last_command[64];           ///< 마지막 수신 명령 문자열
+    bool has_text_command;           ///< 처리되지 않은 텍스트 명령 존재 여부
     ble_conn_handle_t conn_handle;   ///< BSW BLE 연결 핸들
     ble_service_handle_t service_handle; ///< BSW BLE 서비스 핸들
     ble_char_handle_t command_char_handle; ///< 명령 특성 핸들
@@ -140,6 +141,28 @@ esp_err_t ble_controller_send_status(ble_controller_t* ble, float angle, float v
  * @retval ESP_FAIL 실패
  */
 esp_err_t ble_controller_process_packet(ble_controller_t* ble, const uint8_t* data, size_t length);
+
+/**
+ * @brief 텍스트 명령이 수신되었는지 확인
+ * 
+ * 수신된 텍스트 명령이 있는지 확인합니다.
+ * 
+ * @param ble BLE 컨트롤러 구조체 포인터
+ * @return bool 텍스트 명령 존재 여부
+ * @retval true 처리되지 않은 텍스트 명령 존재
+ * @retval false 새로운 텍스트 명령 없음
+ */
+bool ble_controller_has_text_command(const ble_controller_t* ble);
+
+/**
+ * @brief 수신된 텍스트 명령 가져오기
+ * 
+ * 수신된 텍스트 명령 문자열을 반환하고 내부 플래그를 클리어합니다.
+ * 
+ * @param ble BLE 컨트롤러 구조체 포인터
+ * @return const char* 텍스트 명령 문자열 (NULL이면 명령 없음)
+ */
+const char* ble_controller_get_text_command(ble_controller_t* ble);
 
 /**
  * @brief 명령 문자열 파싱 (레거시)

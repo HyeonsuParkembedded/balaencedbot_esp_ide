@@ -1,0 +1,200 @@
+[17:43:44.731] [0.002s] 
+[17:43:44.731] [0.002s] ==========================================
+[17:43:44.731] [0.002s] BalanceBot ESP32-C6 Simulator v2.0
+[17:43:44.731] [0.002s] RISC-V 160MHz + 512KB SRAM
+[17:43:44.731] [0.002s] FreeRTOS + Physics @ 200Hz
+[17:43:44.732] [0.002s] ==========================================
+[17:43:44.732] [0.002s] 
+[17:43:44.732] [0.003s] === 키보드 조작법 ===
+[17:43:44.732] [0.003s] ↑: 앞으로      ↓: 뒤로
+[17:43:44.732] [0.003s] ←: 왼쪽 회전   →: 오른쪽 회전
+[17:43:44.732] [0.003s] SPACE: 밸런싱 토글
+[17:43:44.732] [0.003s] s: 정지        q: 종료
+[17:43:44.732] [0.003s] ==================
+[17:43:44.732] [0.003s] 
+[17:43:44.732] [0.003s] [MOCK_NVS] Flash initialized
+[17:43:44.732] [0.003s] [INFO][POSIX_SIM] Initializing ESP32-C6 robot systems...
+[17:43:44.732] [0.003s] [INFO][POSIX_SIM] CPU: RISC-V 160MHz, SRAM: 512KB
+[17:43:44.732] [0.003s] [WARN][CONFIG_MOCK] Config file not found, using defaults
+[17:43:44.732] [0.003s] [INFO][CONFIG_MOCK] Config manager initialized (POSIX Mock)
+[17:43:44.732] [0.003s] [INFO][BLE_MOCK] BLE Controller Mock initialized (BalanceBot-C6-Sim)
+[17:43:44.732] [0.003s] [INFO][BLE_MOCK] Commands: 'w'=forward, 's'=backward, 'a'=left, 'd'=right, ' '=stop
+[17:43:44.732] [0.003s] [INFO][BLE_MOCK] Text commands: 'SET 0 25.5', 'GET 0', 'SAVE', 'RESET'
+[17:43:44.732] [0.003s] [INFO][MOCK_GPIO] GPIO subsystem initialized
+[17:43:44.732] [0.003s] [MOCK_I2C] Config I2C0: SDA=21, SCL=22, Speed=400000
+[17:43:44.732] [0.003s] [MOCK_I2C] Install I2C0 driver
+[17:43:44.732] [0.003s] [INFO][MOCK_I2C] I2C0 initialized (SDA=21, SCL=22, Speed=400000)
+[17:43:44.732] [0.003s] [INFO][MOCK_PWM] PWM subsystem initialized
+[17:43:44.732] [0.003s] [INFO][MOCK_ADC] ADC subsystem initialized
+[17:43:44.732] [0.003s] [INFO][POSIX_SIM] ESP32-C6 robot systems initialized successfully
+[17:43:44.733] [0.003s] [INFO][POSIX_SIM] Balance PID: Kp=25.00, Ki=0.50, Kd=0.80
+[17:43:44.733] [0.003s] [INFO][POSIX_SIM] Performance factor: x1.6, Control rate: 200Hz
+[17:43:44.733] [0.004s] [POSIX_SIM] All tasks created successfully
+[17:43:44.737] [0.008s] [POSIX_SIM] Starting FreeRTOS scheduler...
+[17:43:44.737] [0.008s] [POSIX_SIM] Use arrow keys to control the robot!
+[17:43:44.737] [0.008s] [POSIX_SIM] Press 'q' to quit
+[17:43:44.737] [0.008s] 
+[17:43:44.737] [0.008s] [WARN] pthread_attr_setstack failed with return value: 22. Default stack will be used.
+[17:43:44.737] [0.008s] [WARN] Increase the stack size to PTHREAD_STACK_MIN.
+[17:43:44.737] [0.008s] [WARN] pthread_attr_setstack failed with return value: 22. Default stack will be used.
+[17:43:44.737] [0.008s] [WARN] Increase the stack size to PTHREAD_STACK_MIN.
+[17:43:44.737] [0.008s] [INFO][POSIX_SIM] Sensor task started
+[17:43:44.737] [0.008s] [DEBUG][POSIX_SIM] Sensor: Angle=0.00°
+[17:43:44.737] [0.008s] [INFO][POSIX_SIM] Balance task started
+[17:43:44.737] [0.008s] [POSIX_SIM] State change: 0 -> 1
+[17:43:44.737] [0.008s] [INFO][POSIX_SIM] BLE task started
+[17:43:44.737] [0.008s] [INFO][POSIX_SIM] Status task started
+[17:43:44.737] [0.008s] 
+[17:43:44.737] [0.008s] === BalanceBot ESP32-C6 Simulator Status ===
+[17:43:44.737] [0.008s] Loop: 0
+[17:43:44.737] [0.008s] State: 1
+[17:43:44.737] [0.008s] Angle: 5.72°
+[17:43:44.737] [0.008s] Velocity: -0.22 cm/s
+[17:43:44.737] [0.008s] Balance Enabled: YES
+[17:43:44.737] [0.008s] CPU: RISC-V 160MHz | SRAM: 512KB
+[17:43:44.737] [0.008s] Control Rate: 200Hz | Performance: x1.6
+[17:43:44.737] [0.008s] Free Heap: 384KB (Simulated)
+[17:43:44.737] [0.008s] ==========================================
+[17:43:44.737] [0.008s] 
+[17:43:44.737] [0.008s] [INFO][POSIX_SIM] Keyboard task started
+[17:43:44.737] [0.008s] [DEBUG][POSIX_SIM] Sensor: Angle=0.00°
+[17:43:44.742] [0.013s] [POSIX_SIM] State change: 1 -> 2
+[17:43:44.742] [0.013s] [DEBUG][POSIX_SIM] Sensor: Angle=0.00°
+[17:43:44.742] [0.013s] [DEBUG][POSIX_SIM] Balance: Angle=0.00°, Output=0.00
+[17:43:44.747] [0.018s] [DEBUG][POSIX_SIM] Sensor: Angle=0.01°
+[17:43:44.747] [0.018s] [DEBUG][POSIX_SIM] Balance: Angle=0.01°, Output=130.70
+[17:43:44.752] [0.023s] [DEBUG][POSIX_SIM] Sensor: Angle=0.01°
+[17:43:44.752] [0.023s] [DEBUG][POSIX_SIM] Balance: Angle=0.01°, Output=-13.88
+[17:43:44.757] [0.028s] [DEBUG][POSIX_SIM] Sensor: Angle=0.02°
+[17:43:44.757] [0.028s] [DEBUG][POSIX_SIM] Balance: Angle=0.02°, Output=56.49
+[17:43:44.762] [0.033s] [DEBUG][POSIX_SIM] Sensor: Angle=0.03°
+[17:43:44.762] [0.033s] [DEBUG][POSIX_SIM] Balance: Angle=0.03°, Output=22.03
+[17:43:44.767] [0.038s] [DEBUG][POSIX_SIM] Sensor: Angle=0.03°
+[17:43:44.767] [0.038s] [DEBUG][POSIX_SIM] Balance: Angle=0.03°, Output=38.43
+[17:43:44.772] [0.043s] [DEBUG][POSIX_SIM] Sensor: Angle=0.04°
+[17:43:44.772] [0.043s] [DEBUG][POSIX_SIM] Balance: Angle=0.04°, Output=29.91
+[17:43:44.777] [0.048s] [DEBUG][POSIX_SIM] Sensor: Angle=0.05°
+[17:43:44.777] [0.048s] [DEBUG][POSIX_SIM] Balance: Angle=0.05°, Output=33.38
+[17:43:44.782] [0.053s] [DEBUG][POSIX_SIM] Sensor: Angle=0.06°
+[17:43:44.782] [0.053s] [DEBUG][POSIX_SIM] Balance: Angle=0.06°, Output=30.88
+[17:43:44.787] [0.058s] [DEBUG][POSIX_SIM] Sensor: Angle=0.07°
+[17:43:44.787] [0.058s] [DEBUG][POSIX_SIM] Balance: Angle=0.07°, Output=31.16
+[17:43:44.792] [0.063s] [DEBUG][POSIX_SIM] Sensor: Angle=0.08°
+[17:43:44.792] [0.063s] [DEBUG][POSIX_SIM] Balance: Angle=0.08°, Output=29.99
+[17:43:44.797] [0.068s] [DEBUG][POSIX_SIM] Sensor: Angle=0.09°
+[17:43:44.797] [0.068s] [DEBUG][POSIX_SIM] Balance: Angle=0.09°, Output=29.42
+[17:43:44.802] [0.073s] [DEBUG][POSIX_SIM] Sensor: Angle=0.10°
+[17:43:44.802] [0.073s] [DEBUG][POSIX_SIM] Balance: Angle=0.10°, Output=28.48
+[17:43:44.807] [0.078s] [DEBUG][POSIX_SIM] Sensor: Angle=0.11°
+[17:43:44.807] [0.078s] [DEBUG][POSIX_SIM] Balance: Angle=0.11°, Output=27.64
+[17:43:44.812] [0.083s] [DEBUG][POSIX_SIM] Sensor: Angle=0.12°
+[17:43:44.812] [0.083s] [DEBUG][POSIX_SIM] Balance: Angle=0.12°, Output=26.68
+[17:43:44.817] [0.088s] [DEBUG][POSIX_SIM] Sensor: Angle=0.14°
+[17:43:44.817] [0.088s] [DEBUG][POSIX_SIM] Balance: Angle=0.14°, Output=25.72
+[17:43:44.822] [0.093s] [DEBUG][POSIX_SIM] Sensor: Angle=0.15°
+[17:43:44.822] [0.093s] [DEBUG][POSIX_SIM] Balance: Angle=0.15°, Output=24.72
+[17:43:44.827] [0.098s] [DEBUG][POSIX_SIM] Sensor: Angle=0.16°
+[17:43:44.827] [0.098s] [DEBUG][POSIX_SIM] Balance: Angle=0.16°, Output=23.69
+[17:43:44.832] [0.103s] [DEBUG][POSIX_SIM] Sensor: Angle=0.17°
+[17:43:44.832] [0.103s] [DEBUG][POSIX_SIM] Balance: Angle=0.17°, Output=22.64
+[17:43:44.837] [0.108s] [DEBUG][POSIX_SIM] Sensor: Angle=0.19°
+[17:43:44.837] [0.108s] [DEBUG][POSIX_SIM] Balance: Angle=0.19°, Output=21.58
+[17:43:44.842] [0.113s] [DEBUG][POSIX_SIM] Sensor: Angle=0.20°
+[17:43:44.842] [0.113s] [DEBUG][POSIX_SIM] Balance: Angle=0.20°, Output=20.50
+[17:43:44.847] [0.118s] [DEBUG][POSIX_SIM] Sensor: Angle=0.21°
+[17:43:44.847] [0.118s] [DEBUG][POSIX_SIM] Balance: Angle=0.21°, Output=19.41
+[17:43:44.852] [0.123s] [DEBUG][POSIX_SIM] Sensor: Angle=0.23°
+[17:43:44.857] [0.128s] [DEBUG][POSIX_SIM] Balance: Angle=0.23°, Output=18.32
+[17:43:44.857] [0.128s] [DEBUG][POSIX_SIM] Sensor: Angle=0.24°
+[17:43:44.862] [0.133s] [DEBUG][POSIX_SIM] Balance: Angle=0.24°, Output=17.23
+[17:43:44.862] [0.133s] [DEBUG][POSIX_SIM] Sensor: Angle=0.25°
+[17:43:44.867] [0.138s] [DEBUG][POSIX_SIM] Balance: Angle=0.25°, Output=16.14
+[17:43:44.867] [0.138s] [DEBUG][POSIX_SIM] Sensor: Angle=0.26°
+[17:43:44.872] [0.143s] [DEBUG][POSIX_SIM] Balance: Angle=0.26°, Output=15.05
+[17:43:44.872] [0.143s] [DEBUG][POSIX_SIM] Sensor: Angle=0.27°
+[17:43:44.877] [0.148s] [DEBUG][POSIX_SIM] Balance: Angle=0.27°, Output=13.98
+[17:43:44.877] [0.148s] [DEBUG][POSIX_SIM] Sensor: Angle=0.28°
+[17:43:44.882] [0.153s] [DEBUG][POSIX_SIM] Balance: Angle=0.28°, Output=12.91
+[17:43:44.882] [0.153s] [DEBUG][POSIX_SIM] Sensor: Angle=0.30°
+[17:43:44.887] [0.158s] [DEBUG][POSIX_SIM] Balance: Angle=0.30°, Output=11.86
+[17:43:44.887] [0.158s] [DEBUG][POSIX_SIM] Sensor: Angle=0.31°
+[17:43:44.892] [0.163s] [DEBUG][POSIX_SIM] Balance: Angle=0.31°, Output=10.83
+[17:43:44.892] [0.163s] [DEBUG][POSIX_SIM] Sensor: Angle=0.32°
+[17:43:44.897] [0.168s] [DEBUG][POSIX_SIM] Balance: Angle=0.32°, Output=9.82
+[17:43:44.897] [0.168s] [DEBUG][POSIX_SIM] Sensor: Angle=0.33°
+[17:43:44.902] [0.173s] [DEBUG][POSIX_SIM] Balance: Angle=0.33°, Output=8.82
+[17:43:44.902] [0.173s] [DEBUG][POSIX_SIM] Sensor: Angle=0.33°
+[17:43:44.907] [0.178s] [DEBUG][POSIX_SIM] Balance: Angle=0.33°, Output=7.85
+[17:43:44.907] [0.178s] [DEBUG][POSIX_SIM] Sensor: Angle=0.34°
+[17:43:44.912] [0.183s] [DEBUG][POSIX_SIM] Balance: Angle=0.34°, Output=6.90
+[17:43:44.912] [0.183s] [DEBUG][POSIX_SIM] Sensor: Angle=0.35°
+[17:43:44.917] [0.188s] [DEBUG][POSIX_SIM] Balance: Angle=0.35°, Output=5.98
+[17:43:44.917] [0.188s] [DEBUG][POSIX_SIM] Sensor: Angle=0.36°
+[17:43:44.922] [0.193s] [DEBUG][POSIX_SIM] Balance: Angle=0.36°, Output=5.09
+[17:43:44.922] [0.193s] [DEBUG][POSIX_SIM] Sensor: Angle=0.36°
+[17:43:44.927] [0.198s] [DEBUG][POSIX_SIM] Balance: Angle=0.36°, Output=4.22
+[17:43:44.927] [0.198s] [DEBUG][POSIX_SIM] Sensor: Angle=0.37°
+[17:43:44.932] [0.203s] [DEBUG][POSIX_SIM] Balance: Angle=0.37°, Output=3.39
+[17:43:44.932] [0.203s] [DEBUG][POSIX_SIM] Sensor: Angle=0.37°
+[17:43:44.937] [0.208s] [DEBUG][POSIX_SIM] Balance: Angle=0.37°, Output=2.58
+[17:43:44.937] [0.208s] [DEBUG][POSIX_SIM] Sensor: Angle=0.38°
+[17:43:44.942] [0.213s] [DEBUG][POSIX_SIM] Balance: Angle=0.38°, Output=1.81
+[17:43:44.942] [0.213s] [DEBUG][POSIX_SIM] Sensor: Angle=0.38°
+[17:43:44.947] [0.218s] [DEBUG][POSIX_SIM] Balance: Angle=0.38°, Output=1.06
+[17:43:44.947] [0.218s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.952] [0.223s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=0.35
+[17:43:44.952] [0.223s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.957] [0.228s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=-0.33
+[17:43:44.957] [0.228s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.962] [0.233s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=-0.97
+[17:43:44.962] [0.233s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.967] [0.238s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=-1.59
+[17:43:44.967] [0.238s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.972] [0.243s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=-2.17
+[17:43:44.972] [0.243s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.977] [0.248s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=-2.71
+[17:43:44.977] [0.248s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.982] [0.253s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=-3.23
+[17:43:44.982] [0.253s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.987] [0.258s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=-3.71
+[17:43:44.987] [0.258s] [DEBUG][POSIX_SIM] Sensor: Angle=0.39°
+[17:43:44.992] [0.263s] [DEBUG][POSIX_SIM] Balance: Angle=0.39°, Output=-4.15
+[17:43:44.992] [0.263s] [DEBUG][POSIX_SIM] Sensor: Angle=0.38°
+[17:43:44.997] [0.268s] [DEBUG][POSIX_SIM] Balance: Angle=0.38°, Output=-4.57
+[17:43:44.997] [0.268s] [DEBUG][POSIX_SIM] Sensor: Angle=0.38°
+[17:43:45.002] [0.273s] [DEBUG][POSIX_SIM] Balance: Angle=0.38°, Output=-4.95
+[17:43:45.002] [0.273s] [DEBUG][POSIX_SIM] Sensor: Angle=0.37°
+[17:43:45.007] [0.278s] [DEBUG][POSIX_SIM] Balance: Angle=0.37°, Output=-5.31
+[17:43:45.007] [0.278s] [DEBUG][POSIX_SIM] Sensor: Angle=0.37°
+[17:43:45.012] [0.283s] [DEBUG][POSIX_SIM] Balance: Angle=0.37°, Output=-5.63
+[17:43:45.012] [0.283s] [DEBUG][POSIX_SIM] Sensor: Angle=0.36°
+[17:43:45.017] [0.288s] [DEBUG][POSIX_SIM] Balance: Angle=0.36°, Output=-5.92
+[17:43:45.017] [0.288s] [DEBUG][POSIX_SIM] Sensor: Angle=0.36°
+[17:43:45.022] [0.293s] [DEBUG][POSIX_SIM] Balance: Angle=0.36°, Output=-6.18
+[17:43:45.022] [0.293s] [DEBUG][POSIX_SIM] Sensor: Angle=0.35°
+[17:43:45.027] [0.298s] [DEBUG][POSIX_SIM] Balance: Angle=0.35°, Output=-6.42
+[17:43:45.027] [0.298s] [DEBUG][POSIX_SIM] Sensor: Angle=0.35°
+[17:43:45.032] [0.303s] [DEBUG][POSIX_SIM] Balance: Angle=0.35°, Output=-6.62
+[17:43:45.032] [0.303s] [DEBUG][POSIX_SIM] Sensor: Angle=0.34°
+[17:43:45.037] [0.308s] [DEBUG][POSIX_SIM] Balance: Angle=0.34°, Output=-6.80
+[17:43:45.037] [0.308s] [DEBUG][POSIX_SIM] Sensor: Angle=0.33°
+[17:43:45.042] [0.313s] [DEBUG][POSIX_SIM] Balance: Angle=0.33°, Output=-6.96
+[17:43:45.042] [0.313s] [DEBUG][POSIX_SIM] Sensor: Angle=0.32°
+[17:43:45.047] [0.318s] [DEBUG][POSIX_SIM] Balance: Angle=0.32°, Output=-7.08
+[17:43:45.047] [0.318s] [DEBUG][POSIX_SIM] Sensor: Angle=0.31°
+[17:43:45.052] [0.323s] [DEBUG][POSIX_SIM] Balance: Angle=0.31°, Output=-7.19
+[17:43:45.053] [0.324s] [DEBUG][POSIX_SIM] Sensor: Angle=0.30°
+[17:43:45.057] [0.328s] [DEBUG][POSIX_SIM] Balance: Angle=0.30°, Output=-7.26
+[17:43:45.057] [0.328s] [DEBUG][POSIX_SIM] Sensor: Angle=0.29°
+[17:43:45.062] [0.333s] [DEBUG][POSIX_SIM] Balance: Angle=0.29°, Output=-7.32
+[17:43:45.062] [0.333s] [DEBUG][POSIX_SIM] Sensor: Angle=0.29°
+[17:43:45.068] [0.339s] [DEBUG][POSIX_SIM] Balance: Angle=0.29°, Output=-7.35
+[17:43:45.069] [0.340s] [DEBUG][POSIX_SIM] Sensor: Angle=0.28°
+[17:43:45.072] [0.343s] [DEBUG][POSIX_SIM] Balance: Angle=0.28°, Output=-7.37
+[17:43:45.072] [0.343s] [DEBUG][POSIX_SIM] Sensor: Angle=0.27°
+[17:43:45.077] [0.348s] [DEBUG][POSIX_SIM] Balance: Angle=0.27°, Output=-7.36
+[17:43:45.077] [0.348s] [DEBUG][POSIX_SIM] Sensor: Angle=0.25°
+[17:43:45.077] [0.348s] [DEBUG][POSIX_SIM] Balance: Angle=0.25°, Output=-7.34
+[17:43:45.082] [0.353s] [DEBUG][POSIX_SIM] Sensor: Angle=0.24°
+[17:43:45.082] [0.353s] [DEBUG][POSIX_SIM] Balance: Angle=0.24°, Output=-7.29
+[17:43:45.087] [0.358s] [DEBUG][POSIX_SIM] Sensor: Angle=0.23°

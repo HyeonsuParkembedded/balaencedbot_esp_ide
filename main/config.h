@@ -77,8 +77,10 @@ extern "C" {
 /**
  * @defgroup LEFT_ENCODER_CONFIG 좌측 엔코더 설정
  * @brief 좌측 모터 회전 인코더 핀 설정
+ * @note 주석 처리하면 좌측 엔코더 비활성화
  * @{
  */
+#define CONFIG_ENABLE_LEFT_ENCODER                   ///< 좌측 엔코더 활성화 (주석 처리 시 비활성화)
 #define CONFIG_LEFT_ENC_A_PIN           GPIO_NUM_1   ///< 좌측 엔코더 A상 핀
 #define CONFIG_LEFT_ENC_B_PIN           GPIO_NUM_2   ///< 좌측 엔코더 B상 핀
 /** @} */
@@ -97,8 +99,10 @@ extern "C" {
 /**
  * @defgroup RIGHT_ENCODER_CONFIG 우측 엔코더 설정
  * @brief 우측 모터 회전 인코더 핀 설정
+ * @note 주석 처리하면 우측 엔코더 비활성화
  * @{
  */
+#define CONFIG_ENABLE_RIGHT_ENCODER                  ///< 우측 엔코더 활성화 (주석 처리 시 비활성화)
 #define CONFIG_RIGHT_ENC_A_PIN          GPIO_NUM_22  ///< 우측 엔코더 A상 핀
 #define CONFIG_RIGHT_ENC_B_PIN          GPIO_NUM_23  ///< 우측 엔코더 B상 핀
 /** @} */
@@ -227,8 +231,9 @@ extern "C" {
  * @brief ESP32-C6 RISC-V 160MHz 성능에 최적화된 실행 주기 (밀리초)
  * @{
  */
-#define CONFIG_SENSOR_UPDATE_RATE       5            ///< 센서 업데이트 주기 (ms) - 200Hz (ESP32-C6 고성능)
-#define CONFIG_BALANCE_UPDATE_RATE      5            ///< 밸런싱 업데이트 주기 (ms) - 200Hz (실시간 제어)
+// Task update rates (ms)
+#define CONFIG_SENSOR_UPDATE_RATE    10   // 100Hz sensor reading
+#define CONFIG_BALANCE_UPDATE_RATE   10   // 100Hz balance control
 #define CONFIG_STATUS_UPDATE_RATE       1000         ///< 상태 업데이트 주기 (ms) - 1Hz
 /** @} */
 
