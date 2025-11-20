@@ -131,6 +131,26 @@ extern "C" {
 #define CONFIG_BATTERY_CRITICAL_THRESHOLD 6.4f       ///< 위험 전압 임계값 (V)
 /** @} */
 
+/**
+ * @defgroup ROBOT_PHYSICAL_CONFIG 로봇 물리 파라미터
+ * @brief 로봇의 물리적 치수 및 엔코더 사양
+ * @{
+ */
+#define CONFIG_ENCODER_PPR              1320         ///< 엔코더 펄스 수 (Pulse Per Revolution)
+#define CONFIG_WHEEL_DIAMETER_CM        6.5f         ///< 바퀴 지름 (cm)
+/** @} */
+
+/**
+ * @defgroup UI_CONFIG 사용자 인터페이스 설정
+ * @brief 버튼 및 LED 핀 설정
+ * @{
+ */
+#define CONFIG_BUTTON_PIN               GPIO_NUM_12  ///< 사용자 버튼 핀 (Boot 버튼 등)
+#define CONFIG_LED_R_PIN                GPIO_NUM_13  ///< RGB LED Red 핀
+#define CONFIG_LED_G_PIN                GPIO_NUM_14  ///< RGB LED Green 핀
+#define CONFIG_LED_B_PIN                GPIO_NUM_15  ///< RGB LED Blue 핀
+/** @} */
+
 /** @} */ // HARDWARE_CONFIG
 
 /**
@@ -163,28 +183,6 @@ extern "C" {
 #define CONFIG_KALMAN_Q_ANGLE           0.001f       ///< 각도 프로세스 노이즈
 #define CONFIG_KALMAN_Q_BIAS            0.003f       ///< 바이어스 프로세스 노이즈
 #define CONFIG_KALMAN_R_MEASURE         0.03f        ///< 측정 노이즈
-/** @} */
-
-/**
- * @defgroup ROBOT_PHYSICAL_CONFIG 로봇 물리 파라미터
- * @brief 로봇의 물리적 특성 정의
- * @{
- */
-#define CONFIG_WHEEL_DIAMETER_CM        6.5f         ///< 바퀴 직경 (cm)
-#define CONFIG_ENCODER_PPR              1320         ///< 엔코더 펄스/회전 (TT모터 120:1)
-
-// [모터 설정 수정]
-// TB6612FNG STBY 핀 (GPIO 9 사용)
-#define CONFIG_MOTOR_STBY_PIN           GPIO_NUM_9
-
-// [UI 설정 추가]
-// 버튼 (GPIO 12, 내부 풀업 사용)
-#define CONFIG_BUTTON_PIN               GPIO_NUM_12
-#define CONFIG_BUTTON_DEBOUNCE_MS       50
-// RGB LED (GPIO 13, 14, 15)
-#define CONFIG_LED_R_PIN                GPIO_NUM_13
-#define CONFIG_LED_G_PIN                GPIO_NUM_14
-#define CONFIG_LED_B_PIN                GPIO_NUM_15
 /** @} */
 
 /**

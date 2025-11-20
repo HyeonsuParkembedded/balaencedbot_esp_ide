@@ -222,9 +222,18 @@ esp_err_t ble_controller_process_packet(ble_controller_t* ble, const uint8_t* da
                                       ((cmd->turn < -100) ? -100 : cmd->turn);
             ble->current_command.speed = (cmd->speed > 100) ? 100 : cmd->speed;
             
-            // 제어 플래그 추출
-            ble->current_command.balance = (cmd->flags & CMD_FLAG_BALANCE) != 0;
-            ble->current_command.standup = (cmd->flags & CMD_FLAG_STANDUP) != 0;
+            // [수정됨] 비상 정지 플래그 처리
+            if (cmd->flags & CMD_FLAG_EMERGENCY) {
+                ble->current_command.balance = false;
+                ble->current_command.standup = false;
+                ble->current_command.speed = 0;
+                ble->current_command.direction = 0;
+                ble->current_command.turn = 0;
+                BSW_LOGW(TAG, "Emergency Stop Activated!");
+            } else {
+                ble->current_command.balance = (cmd->flags & CMD_FLAG_BALANCE) != 0;
+                ble->current_command.standup = (cmd->flags & CMD_FLAG_STANDUP) != 0;
+            }
             
             BSW_LOGD(TAG, "Move command: dir=%d, turn=%d, speed=%d, balance=%s, standup=%s", 
                      ble->current_command.direction, 
@@ -277,6 +286,14 @@ static void ble_event_handler(const ble_event_t* event, void* user_data) {
             BSW_LOGI(TAG, "BLE Client disconnected");
             ble->device_connected = false;
             ble->conn_handle = 0;
+
+            // [추가됨] Fail-safe: 연결 끊김 시 즉시 정지
+            ble->current_command.balance = false;
+            ble->current_command.speed = 0;
+            ble->current_command.direction = 0;
+            ble->current_command.turn = 0;
+            ble->current_command.standup = false;
+            BSW_LOGW(TAG, "Fail-safe: Robot stopped due to disconnection");
             break;
 
         case BLE_EVENT_DATA_RECEIVED:

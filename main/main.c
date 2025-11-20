@@ -34,6 +34,9 @@
 #include "config.h"
 #include "bsw/system_services.h"
 #include "bsw/i2c_driver.h"
+#include "bsw/uart_driver.h"
+#include "bsw/gpio_driver.h"
+#include "bsw/adc_driver.h"
 
 #include "input/imu_sensor.h"
 #include "logic/kalman_filter.h"
@@ -94,7 +97,6 @@ static balance_pid_t balance_pid;       ///< 밸런싱용 이중 루프 PID 제�
 static servo_standup_t servo_standup;   ///< 기립 보조용 서보 모터
 static battery_sensor_t battery_sensor; ///< 배터리 전압 센서
 /** @} */
-
 /**
  * @defgroup SHARED_DATA 공유 데이터
  * @brief 태스크간 공유되는 로봇 상태 데이터(뮤텍스로 보호)
@@ -116,6 +118,38 @@ static TaskHandle_t balance_task_handle = NULL; ///< 밸런싱 제어 태스크 
 static TaskHandle_t sensor_task_handle = NULL;  ///< 센서 읽기 태스크 핸들
 static TaskHandle_t status_task_handle = NULL;  ///< 상태 모니터링 태스크 핸들
 /** @} */
+
+// Navigation State
+static double est_lat = 0.0, est_lon = 0.0;
+static bool is_pos_initialized = false;
+static float robot_heading = 0.0f; // 0=North, 90=East
+static double target_lat = 0.0, target_lon = 0.0;
+
+// Helper functions for navigation
+static float normalize_angle(float angle) {
+    while (angle > 180) angle -= 360;
+    while (angle < -180) angle += 360;
+    return angle;
+}
+
+static double calculate_distance(double lat1, double lon1, double lat2, double lon2) {
+    const double R = 6371000; // Earth radius in meters
+    double dLat = (lat2 - lat1) * M_PI / 180.0;
+    double dLon = (lon2 - lon1) * M_PI / 180.0;
+    double a = sin(dLat/2) * sin(dLat/2) +
+               cos(lat1 * M_PI / 180.0) * cos(lat2 * M_PI / 180.0) *
+               sin(dLon/2) * sin(dLon/2);
+    double c = 2 * atan2(sqrt(a), sqrt(1-a));
+    return R * c;
+}
+
+static double calculate_bearing(double lat1, double lon1, double lat2, double lon2) {
+    double dLon = (lon2 - lon1) * M_PI / 180.0;
+    double y = sin(dLon) * cos(lat2 * M_PI / 180.0);
+    double x = cos(lat1 * M_PI / 180.0) * sin(lat2 * M_PI / 180.0) -
+               sin(lat1 * M_PI / 180.0) * cos(lat2 * M_PI / 180.0) * cos(dLon);
+    return atan2(y, x) * 180.0 / M_PI;
+}
 
 /**
  * @defgroup FUNCTION_PROTOTYPES 함수 프로토타입
@@ -385,17 +419,11 @@ static esp_err_t init_right_encoder_wrapper(void) {
  * 
  * config.h에 정의된 설정값을 사용하여 GPS 센서를 초기화하는 래퍼 함수입니다.
  * 
- * NOTE: Temporarily disabled for testing without GPS hardware
- *       GPS UART RX polling task causes watchdog timeout without actual GPS module
- *       Also fixed argument order bug in gps_sensor.c: uart_driver_init(port, baudrate, tx, rx)
- * 
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
-#if 0  // Disabled for hardware-less testing
 static esp_err_t init_gps_wrapper(void) {
-    return gps_sensor_init(&gps, CONFIG_GPS_UART_PORT, CONFIG_GPS_BAUDRATE, CONFIG_GPS_TX_PIN, CONFIG_GPS_RX_PIN);
+    return gps_sensor_init(&gps, BSW_UART_PORT_1, (bsw_gpio_num_t)CONFIG_GPS_TX_PIN, (bsw_gpio_num_t)CONFIG_GPS_RX_PIN, CONFIG_GPS_BAUDRATE);
 }
-#endif
 
 /**
  * @brief 배터리 센서 초기화 래퍼 함수 (BSW ADC 사용)
@@ -433,7 +461,7 @@ static esp_err_t init_ble_wrapper(void) {
  * @return ESP_OK 성공, ESP_FAIL 실패
  */
 static esp_err_t init_servo_wrapper(void) {
-    return servo_standup_init(&servo_standup, CONFIG_SERVO_PIN, CONFIG_SERVO_CHANNEL, CONFIG_SERVO_EXTENDED_ANGLE, CONFIG_SERVO_RETRACTED_ANGLE);
+    return servo_standup_init(&servo_standup, (bsw_gpio_num_t)CONFIG_SERVO_PIN, (pwm_channel_t)CONFIG_SERVO_CHANNEL, CONFIG_SERVO_EXTENDED_ANGLE, CONFIG_SERVO_RETRACTED_ANGLE);
 }
 
 /**
@@ -483,8 +511,7 @@ static void initialize_robot(void) {
         {"IMU_Sensor", init_imu_wrapper, COMPONENT_OPTIONAL, false, 0},  // ⚠️ OPTIONAL로 변경 (하드웨어 미연결 시 테스트용)
         {"Left_Encoder", init_left_encoder_wrapper, COMPONENT_OPTIONAL, false, 0},  // ⚠️ OPTIONAL로 변경
         {"Right_Encoder", init_right_encoder_wrapper, COMPONENT_OPTIONAL, false, 0},  // ⚠️ OPTIONAL로 변경
-        // GPS disabled for testing without hardware to prevent UART RX polling watchdog timeout
-        // {"GPS_Sensor", init_gps_wrapper, COMPONENT_OPTIONAL, false, 0},
+        {"GPS_Sensor", init_gps_wrapper, COMPONENT_OPTIONAL, false, 0},
         {"Battery_Sensor", init_battery_wrapper, COMPONENT_IMPORTANT, false, 0},
         {"BLE_Controller", init_ble_wrapper, COMPONENT_IMPORTANT, false, 0},
         {"Servo_Standup", init_servo_wrapper, COMPONENT_IMPORTANT, false, 0}
@@ -557,35 +584,39 @@ static void initialize_robot(void) {
  * - IMU 센서 데이터 읽기 및 칼만 필터링
  * - GPS 데이터 업데이트
  * - 엔코더 속도 계산
- * - 로봇 전체 이동 속도 계산 (좌우 바퀴 평균)
- * 
- * 이 태스크는 높은 우선순위(5)로 실행되어 정확한 센서 데이터 수집을 보장합니다.
  */
 static void sensor_task(void *pvParameters) {
     BSW_LOGI(TAG, "Sensor task started");
     
     while (1) {
-        // Update IMU
-        esp_err_t ret = imu_sensor_update(&imu);
-        if (ret == ESP_OK) {
-            // Apply Kalman filter to pitch angle
-            static int64_t last_time = 0;
-            int64_t now = esp_timer_get_time();
-            float dt = (last_time == 0) ? 0.01f : (now - last_time) / 1000000.0f;
-            last_time = now;
-            
-            set_filtered_angle(kalman_filter_get_angle(&kalman_pitch, 
-                                                   imu_sensor_get_pitch(&imu),
-                                                   imu_sensor_get_gyro_y(&imu), 
-                                                   dt));
+        // IMU Update
+        if (imu_sensor_update(&imu) == ESP_OK) {
+             float pitch = imu_sensor_get_pitch(&imu);
+             float gyro_y = imu_sensor_get_gyro_y(&imu);
+             
+             // Kalman Filter Update
+             float dt = CONFIG_SENSOR_UPDATE_RATE / 1000.0f;
+             float filtered = kalman_filter_get_angle(&kalman_pitch, pitch, gyro_y, dt);
+             set_filtered_angle(filtered);
         }
-        
-        // Update GPS
+
+        // GPS Update
         gps_sensor_update(&gps);
-        
-        // Update motor speeds (only if enabled)
-        float left_speed = 0.0f, right_speed = 0.0f;
-        
+        if (gps_sensor_has_fix(&gps)) {
+             est_lat = gps_sensor_get_latitude(&gps);
+             est_lon = gps_sensor_get_longitude(&gps);
+             is_pos_initialized = true;
+             
+             // Update heading if moving
+             if (gps_sensor_get_speed(&gps) > 1.0f) {
+                 robot_heading = gps_sensor_get_course(&gps);
+             }
+        }
+
+        // Encoder Update
+        float left_speed = 0.0f;
+        float right_speed = 0.0f;
+
 #ifdef CONFIG_ENABLE_LEFT_ENCODER
         encoder_sensor_update_speed(&left_encoder);
         left_speed = encoder_sensor_get_speed(&left_encoder);
@@ -604,10 +635,10 @@ static void sensor_task(void *pvParameters) {
 #elif defined(CONFIG_ENABLE_RIGHT_ENCODER)
         set_robot_velocity(right_speed);
 #else
-        set_robot_velocity(0.0f);  // 엔코더가 모두 비활성화된 경우
+        set_robot_velocity(0.0f);
 #endif
         
-        vTaskDelay(pdMS_TO_TICKS(10)); // 100Hz
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_SENSOR_UPDATE_RATE));
     }
 }
 
@@ -667,7 +698,7 @@ static void balance_task(void *pvParameters) {
             balance_pid_reset(&balance_pid);
             break;
 
-        case ROBOT_STATE_BALANCING:
+        case ROBOT_STATE_BALANCING: {
             // Balance using dual-loop PID (angle + velocity control)
             // Compute balance control (dt = 20ms = 0.02s for 50Hz update rate)
             float dt = CONFIG_BALANCE_UPDATE_RATE / 1000.0f;
@@ -680,20 +711,63 @@ static void balance_task(void *pvParameters) {
             if (imu_sensor_update(&imu) == ESP_OK) {
                 float gyro_rate = imu_sensor_get_gyro_y(&imu);  // Pitch angular velocity
                 
-                // Set target velocity based on remote command
-                balance_pid_set_target_velocity(&balance_pid, cmd.direction * 10.0f);  // Scale command
+                // Determine control inputs based on mode
+                float target_speed = 0.0f;
+                float target_turn = 0.0f;
+
+                if (robot_mode == MODE_REMOTE_CONTROL) {
+                    target_speed = cmd.direction * 10.0f; // Scale command
+                    target_turn = cmd.turn * 0.5f;        // Scale turn
+                } else if (robot_mode == MODE_GPS_FOLLOWING) {
+                    // Autonomous Navigation Logic
+                    if (is_pos_initialized && (target_lat != 0.0 || target_lon != 0.0)) {
+                        double dist = calculate_distance(est_lat, est_lon, target_lat, target_lon);
+                        double bearing = calculate_bearing(est_lat, est_lon, target_lat, target_lon);
+                        float heading_error = normalize_angle(bearing - robot_heading);
+
+                        if (dist < 2.0) { // Arrived (within 2 meters)
+                            rgb_led_set_color(LED_COLOR_YELLOW); // Arrived indicator
+                            target_speed = 0.0f;
+                            target_turn = 0.0f;
+                        } else {
+                            // Simple P-controller for turning
+                            target_turn = heading_error * 2.0f; 
+                            if (target_turn > 30.0f) target_turn = 30.0f;
+                            if (target_turn < -30.0f) target_turn = -30.0f;
+
+                            // Move forward if roughly aligned
+                            if (fabs(heading_error) < 45.0f) {
+                                target_speed = 15.0f; // Constant speed 15 cm/s
+                            } else {
+                                target_speed = 0.0f; // Turn in place
+                            }
+                        }
+                    }
+                }
+                
+                // Set target velocity
+                balance_pid_set_target_velocity(&balance_pid, target_speed);
                 
                 // Compute dual-loop balance control output
                 float motor_output = balance_pid_compute_balance(&balance_pid, current_angle, gyro_rate, current_velocity, dt);
                 
-                // Apply motor commands
-                update_motors(motor_output, cmd);
+                // Apply motor commands with turning
+                // update_motors expects motor_output and a command struct. 
+                // We need to adapt update_motors or manually calculate left/right PWM.
+                // Let's modify update_motors to take turn value directly or construct a temp cmd.
+                remote_command_t temp_cmd = {0};
+                temp_cmd.turn = (int8_t)target_turn; 
+                // Note: update_motors uses cmd.turn directly. We need to ensure scaling matches.
+                
+                update_motors(motor_output, temp_cmd);
+
             } else {
                 // Fallback: stop motors if sensor fails
                 motor_control_stop(&left_motor);
                 motor_control_stop(&right_motor);
             }
             break;
+        }
 
         case ROBOT_STATE_STANDING_UP:
             // Motors stopped during standup
