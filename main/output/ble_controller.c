@@ -68,6 +68,7 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     ble->current_command.speed = 0;
     ble->current_command.balance = true;
     ble->current_command.standup = false;
+    ble->current_command.gps_mode = false;
     ble->has_text_command = false;
     memset(ble->last_command, 0, sizeof(ble->last_command));
     ble->conn_handle = 0;
@@ -233,6 +234,9 @@ esp_err_t ble_controller_process_packet(ble_controller_t* ble, const uint8_t* da
             } else {
                 ble->current_command.balance = (cmd->flags & CMD_FLAG_BALANCE) != 0;
                 ble->current_command.standup = (cmd->flags & CMD_FLAG_STANDUP) != 0;
+                
+                // [추가됨] GPS 모드 플래그 파싱
+                ble->current_command.gps_mode = (cmd->flags & CMD_FLAG_GPS_MODE) != 0;
             }
             
             BSW_LOGD(TAG, "Move command: dir=%d, turn=%d, speed=%d, balance=%s, standup=%s", 
@@ -293,6 +297,7 @@ static void ble_event_handler(const ble_event_t* event, void* user_data) {
             ble->current_command.direction = 0;
             ble->current_command.turn = 0;
             ble->current_command.standup = false;
+            ble->current_command.gps_mode = false;
             BSW_LOGW(TAG, "Fail-safe: Robot stopped due to disconnection");
             break;
 

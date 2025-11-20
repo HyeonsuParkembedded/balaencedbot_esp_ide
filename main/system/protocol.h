@@ -35,6 +35,7 @@ extern "C" {
 #define CMD_FLAG_BALANCE        0x01  ///< 밸런싱 활성화
 #define CMD_FLAG_STANDUP        0x02  ///< 기립 명령
 #define CMD_FLAG_EMERGENCY      0x04  ///< 비상 정지
+#define CMD_FLAG_GPS_MODE       0x08  ///< GPS 주행 모드 활성화
 
 // Maximum payload size
 #define MAX_PAYLOAD_SIZE        64    ///< 최대 페이로드 크기 (바이트)

@@ -950,6 +950,22 @@ static void handle_remote_commands(void) {
         ble_controller_send_status(&ble_controller, angle, velocity, battery_voltage);
     }
 
+    // [추가됨] 앱 명령에 따라 주행 모드 전환
+    // 앱에서 GPS 버튼을 켜면 -> GPS 모드, 끄면 -> 리모트 모드
+    if (cmd.gps_mode) {
+        if (robot_mode != MODE_GPS_FOLLOWING) {
+            robot_mode = MODE_GPS_FOLLOWING;
+            rgb_led_set_color(LED_COLOR_GREEN); // GPS 모드는 초록색
+            BSW_LOGI(TAG, "Mode switched to GPS (via App)");
+        }
+    } else {
+        if (robot_mode != MODE_REMOTE_CONTROL) {
+            robot_mode = MODE_REMOTE_CONTROL;
+            rgb_led_set_color(LED_COLOR_BLUE); // 일반 모드는 파란색
+            BSW_LOGI(TAG, "Mode switched to Remote (via App)");
+        }
+    }
+
     // Update balancing state
     set_balancing_enabled(cmd.balance);
 }

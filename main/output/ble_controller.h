@@ -19,7 +19,7 @@
 #ifndef NATIVE_BUILD
 #include "esp_err.h"
 #else
-// Native build - types defined in test file
+//Native build - types defined in test file
 typedef int esp_err_t;
 #define ESP_OK 0
 #define ESP_FAIL -1
@@ -49,6 +49,7 @@ typedef struct {
     int speed;        ///< 속도 (0~100)
     bool balance;     ///< 밸런싱 활성화/비활성화
     bool standup;     ///< 기립 명령
+    bool gps_mode;    ///< GPS 모드 ON/OFF 상태
 } remote_command_t;
 
 /**
@@ -179,4 +180,4 @@ void ble_controller_parse_command(ble_controller_t* ble, const char* command); /
 }
 #endif
 
-#endif
+#endif // BLE_CONTROLLER_H
