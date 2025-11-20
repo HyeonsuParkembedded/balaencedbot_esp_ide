@@ -4,9 +4,11 @@
 FILE(GLOB_RECURSE app_sources 
     "main.c"
     "bsw/*.c"
-    "input/*.c" 
+    "input/*.c"
+    "input/button_driver.c" 
     "logic/*.c"
     "output/*.c"
+    "output/rgb_led.c"
     "system/*.c")
 
 # 사용하지 않는 old 파일과 example 파일 제외

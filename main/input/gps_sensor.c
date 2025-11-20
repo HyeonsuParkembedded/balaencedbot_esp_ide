@@ -97,18 +97,37 @@ esp_err_t gps_sensor_update(gps_sensor_t* gps) {
         return ESP_FAIL;
     }
 
-    uint8_t buffer[256];
-    int len = uart_read_data(gps->uart_port, buffer, sizeof(buffer) - 1, 100);
+    // Static buffer to accumulate partial packets across calls
+    static uint8_t line_buffer[128];
+    static int line_idx = 0;
+    
+    uint8_t temp_buf[64];
+    // Non-blocking read
+    int len = uart_read_data(gps->uart_port, temp_buf, sizeof(temp_buf), 0);
 
-    if (len > 0) {
-        buffer[len] = '\0';
-        char* sentence = strtok((char*)buffer, "\r\n");
+    for (int i = 0; i < len; i++) {
+        uint8_t c = temp_buf[i];
+        
+        // If buffer overflow, reset (safety)
+        if (line_idx >= sizeof(line_buffer) - 1) {
+            line_idx = 0; 
+        }
 
-        while (sentence != NULL) {
-            if (parse_nmea(gps, sentence)) {
-                return ESP_OK;
+        // Standard NMEA end character is '\n' (often \r\n)
+        if (c == '\n') {
+            line_buffer[line_idx] = '\0'; // Null terminate
+            
+            // Parse the complete line
+            if (parse_nmea(gps, (char*)line_buffer)) {
+                // If parsing successful, we could return ESP_OK here, 
+                // but we might want to process all available data.
+                // For now, let's continue processing.
             }
-            sentence = strtok(NULL, "\r\n");
+            
+            line_idx = 0; // Reset for next line
+        } else if (c != '\r') {
+            // Accumulate char (ignore \r)
+            line_buffer[line_idx++] = c;
         }
     }
 

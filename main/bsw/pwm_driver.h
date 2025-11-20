@@ -70,7 +70,7 @@ typedef struct {
 /**
  * @brief LEDC PWM 설정 상수
  */
-#define PWM_DEFAULT_FREQUENCY   5000        ///< 기본 PWM 주파수 (5kHz)
+#define PWM_DEFAULT_FREQUENCY   20000       ///< 기본 PWM 주파수 (20kHz, 가청 대역 밖)
 #define PWM_SERVO_FREQUENCY     50          ///< 서보 PWM 주파수 (50Hz)
 #define PWM_RESOLUTION          1000        ///< BSW 인터페이스 해상도 (0-1000, 0.1% 단위)
 #define PWM_LEDC_RESOLUTION     LEDC_TIMER_13_BIT  ///< LEDC 하드웨어 해상도 (13비트)

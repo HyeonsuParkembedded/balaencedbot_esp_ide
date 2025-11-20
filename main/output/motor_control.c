@@ -14,6 +14,7 @@
 #include "../bsw/pwm_driver.h"
 #include "../bsw/gpio_driver.h"
 #include "../bsw/system_services.h"
+#include "../config.h" // For CONFIG_MOTOR_STBY_PIN
 
 static const char* MOTOR_TAG = "MOTOR_CONTROL";  ///< 로깅 태그
 
@@ -59,6 +60,12 @@ esp_err_t motor_control_init(motor_control_t* motor,
         return ret;
     }
 
+    // STBY 핀 활성화 (TB6612FNG)
+    #ifdef CONFIG_MOTOR_STBY_PIN
+    bsw_gpio_config_pin(CONFIG_MOTOR_STBY_PIN, BSW_GPIO_MODE_OUTPUT, BSW_GPIO_PULLUP_DISABLE, BSW_GPIO_PULLDOWN_DISABLE);
+    bsw_gpio_set_level(CONFIG_MOTOR_STBY_PIN, 1); // Driver Enable
+    #endif
+
     // PWM 채널 초기화 (속도 제어용)
     ret = pwm_channel_init(enable_pin, enable_ch);
     if (ret != ESP_OK) {
@@ -78,10 +85,25 @@ esp_err_t motor_control_init(motor_control_t* motor,
  * @param motor 모터 제어 구조체 포인터
  * @param speed 모터 속도 (-255 ~ +255)
  */
+#define MOTOR_DEADZONE 35
+
 void motor_control_set_speed(motor_control_t* motor, int speed) {
     // 속도 범위 제한
     if (speed > 255) speed = 255;
     if (speed < -255) speed = -255;
+
+    // 데드존 보정
+    if (speed > 0) {
+        speed += MOTOR_DEADZONE;
+        if (speed > 255) speed = 255;
+    } else if (speed < 0) {
+        speed -= MOTOR_DEADZONE;
+        if (speed < -255) speed = -255;
+    }
+
+    // 입력(255) -> PWM(1000) 스케일링
+    int abs_speed = (speed > 0) ? speed : -speed;
+    uint32_t pwm_duty = (abs_speed * 1000) / 255;
 
     if (speed > 0) {
         // 전진: A=HIGH, B=LOW
@@ -91,15 +113,15 @@ void motor_control_set_speed(motor_control_t* motor, int speed) {
         // 후진: A=LOW, B=HIGH
         bsw_gpio_set_level(motor->motor_pin_a, 0);
         bsw_gpio_set_level(motor->motor_pin_b, 1);
-        speed = -speed;  // 절댓값으로 변환
     } else {
         // 정지: A=LOW, B=LOW (브레이크)
         bsw_gpio_set_level(motor->motor_pin_a, 0);
         bsw_gpio_set_level(motor->motor_pin_b, 0);
+        pwm_duty = 0;
     }
 
     // PWM 듀티 사이클 설정으로 속도 제어
-    pwm_set_duty(motor->enable_channel, speed);
+    pwm_set_duty(motor->enable_channel, pwm_duty);
 }
 
 /**

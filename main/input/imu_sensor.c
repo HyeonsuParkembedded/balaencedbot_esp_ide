@@ -29,6 +29,7 @@ static const char* IMU_TAG = "IMU_SENSOR"; ///< 로깅 태그
 #define MPU6050_ACCEL_CONFIG    0x1C  ///< 가속도계 설정 레지스터
 #define MPU6050_ACCEL_XOUT_H    0x3B  ///< 가속도계 X축 상위 바이트
 #define MPU6050_GYRO_XOUT_H     0x43  ///< 자이로스코프 X축 상위 바이트
+#define MPU6050_CONFIG_REG      0x1A  ///< 설정 레지스터 (DLPF)
 /** @} */
 
 /**
@@ -42,8 +43,9 @@ static const char* IMU_TAG = "IMU_SENSOR"; ///< 로깅 태그
  * 1. I2C 드라이버 초기화
  * 2. WHO_AM_I 레지스터 확인 (0x68)
  * 3. 전원 관리 레지스터 설정 (슬립 모드 해제)
- * 4. 자이로스코프 범위 설정 (±250°/s)
- * 5. 가속도계 범위 설정 (±2g)
+ * 4. DLPF 설정 (44Hz 대역폭)
+ * 5. 자이로스코프 범위 설정 (±500°/s)
+ * 6. 가속도계 범위 설정 (±2g)
  * 
  * @param sensor IMU 센서 구조체 포인터
  * @param port 사용할 I2C 포트 번호
@@ -82,8 +84,14 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_nu
         return ret;
     }
 
-    // Configure gyroscope (±250 degrees/s)
-    ret = i2c_write_register(port, MPU6050_ADDR, MPU6050_GYRO_CONFIG, 0x00);
+    // DLPF 설정 (44Hz 대역폭)
+    ret = i2c_write_register(port, MPU6050_ADDR, MPU6050_CONFIG_REG, 0x03);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    // Configure gyroscope (±500 degrees/s)
+    ret = i2c_write_register(port, MPU6050_ADDR, MPU6050_GYRO_CONFIG, 0x08);
     if (ret != ESP_OK) {
         return ret;
     }
@@ -109,7 +117,7 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_nu
  * 데이터 처리 과정:
  * 1. I2C로 14바이트 연속 읽기 (가속도 6바이트 + 온도 2바이트 + 자이로 6바이트)
  * 2. 16비트 빅엔디안 데이터를 정수로 변환
- * 3. 스케일링 팩터 적용 (가속도: /16384, 자이로: /131)
+ * 3. 스케일링 팩터 적용 (가속도: /16384, 자이로: /65.5)
  * 4. 가속도계 데이터로 피치/롤 각도 계산 (atan2 함수 사용)
  * 
  * @param sensor IMU 센서 구조체 포인터
@@ -141,9 +149,9 @@ esp_err_t imu_sensor_update(imu_sensor_t* sensor) {
     sensor->data.accel_y = accel_y / 16384.0f;
     sensor->data.accel_z = accel_z / 16384.0f;
 
-    sensor->data.gyro_x = gyro_x / 131.0f;      // ±250°/s range
-    sensor->data.gyro_y = gyro_y / 131.0f;
-    sensor->data.gyro_z = gyro_z / 131.0f;
+    sensor->data.gyro_x = gyro_x / 65.5f;      // ±500°/s range
+    sensor->data.gyro_y = gyro_y / 65.5f;
+    sensor->data.gyro_z = gyro_z / 65.5f;
 
     // Calculate pitch and roll from accelerometer
     sensor->data.pitch = atan2(-sensor->data.accel_x, sqrt(sensor->data.accel_y * sensor->data.accel_y + sensor->data.accel_z * sensor->data.accel_z)) * 180.0f / M_PI;

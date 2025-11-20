@@ -171,7 +171,20 @@ extern "C" {
  * @{
  */
 #define CONFIG_WHEEL_DIAMETER_CM        6.5f         ///< 바퀴 직경 (cm)
-#define CONFIG_ENCODER_PPR              360          ///< 엔코더 펄스/회전
+#define CONFIG_ENCODER_PPR              1320         ///< 엔코더 펄스/회전 (TT모터 120:1)
+
+// [모터 설정 수정]
+// TB6612FNG STBY 핀 (GPIO 9 사용)
+#define CONFIG_MOTOR_STBY_PIN           GPIO_NUM_9
+
+// [UI 설정 추가]
+// 버튼 (GPIO 12, 내부 풀업 사용)
+#define CONFIG_BUTTON_PIN               GPIO_NUM_12
+#define CONFIG_BUTTON_DEBOUNCE_MS       50
+// RGB LED (GPIO 13, 14, 15)
+#define CONFIG_LED_R_PIN                GPIO_NUM_13
+#define CONFIG_LED_G_PIN                GPIO_NUM_14
+#define CONFIG_LED_B_PIN                GPIO_NUM_15
 /** @} */
 
 /**

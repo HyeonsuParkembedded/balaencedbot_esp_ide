@@ -46,6 +46,9 @@
 #include "output/servo_standup.h"
 #include "system/error_recovery.h"
 #include "system/config_manager.h"
+#include "input/button_driver.h"
+#include "output/rgb_led.h"
+#include "esp_timer.h"
 
 // Pin definitions are now in config.h
 
@@ -66,6 +69,10 @@ typedef enum {
     ROBOT_STATE_FALLEN,      ///< 넘어진 상태
     ROBOT_STATE_ERROR        ///< 오류 상태
 } robot_state_t;
+
+typedef enum { MODE_REMOTE_CONTROL, MODE_GPS_FOLLOWING } robot_mode_t;
+static robot_mode_t robot_mode = MODE_REMOTE_CONTROL;
+static button_t mode_btn;
 
 static robot_state_t current_state = ROBOT_STATE_INIT; ///< 현재 로봇 상태
 static SemaphoreHandle_t state_mutex = NULL;           ///< 상태 변경 보호용 뮤텍스
@@ -532,6 +539,12 @@ static void initialize_robot(void) {
     balance_pid_set_target_velocity(&balance_pid, 0.0f);  // 정지 상태로 시작
     BSW_LOGI(TAG, "Balance PID controllers initialized with tuned parameters");
     
+    // Initialize UI (Button & LED)
+    button_init(&mode_btn, CONFIG_BUTTON_PIN);
+    rgb_led_init(CONFIG_LED_R_PIN, CONFIG_LED_G_PIN, CONFIG_LED_B_PIN);
+    rgb_led_set_color(LED_COLOR_BLUE); // Default: Remote Control Mode
+    BSW_LOGI(TAG, "UI initialized");
+
     // Log system health after initialization
     log_system_health();
 }
@@ -556,7 +569,11 @@ static void sensor_task(void *pvParameters) {
         esp_err_t ret = imu_sensor_update(&imu);
         if (ret == ESP_OK) {
             // Apply Kalman filter to pitch angle
-            float dt = 0.01f; // 100Hz update rate
+            static int64_t last_time = 0;
+            int64_t now = esp_timer_get_time();
+            float dt = (last_time == 0) ? 0.01f : (now - last_time) / 1000000.0f;
+            last_time = now;
+            
             set_filtered_angle(kalman_filter_get_angle(&kalman_pitch, 
                                                    imu_sensor_get_pitch(&imu),
                                                    imu_sensor_get_gyro_y(&imu), 
@@ -614,6 +631,27 @@ static void balance_task(void *pvParameters) {
     BSW_LOGI(TAG, "Balance task started");
 
     while (1) {
+        // Button Event Handling
+        button_event_t evt = button_get_event(&mode_btn);
+        if (evt == BUTTON_EVENT_CLICK) {
+            robot_mode = (robot_mode == MODE_REMOTE_CONTROL) ? MODE_GPS_FOLLOWING : MODE_REMOTE_CONTROL;
+            rgb_led_set_color(robot_mode == MODE_REMOTE_CONTROL ? LED_COLOR_BLUE : LED_COLOR_GREEN);
+            BSW_LOGI(TAG, "Mode switched to: %s", robot_mode == MODE_REMOTE_CONTROL ? "REMOTE" : "GPS");
+        } else if (evt == BUTTON_EVENT_LONG_PRESS) {
+            if (!servo_standup_is_standing_up(&servo_standup)) {
+                servo_standup_request_standup(&servo_standup);
+                set_robot_state(ROBOT_STATE_STANDING_UP);
+                rgb_led_set_color(LED_COLOR_YELLOW);
+                BSW_LOGI(TAG, "Standup requested via button");
+            }
+        }
+
+        // 기립 완료 후 LED 복구
+        if (servo_standup_is_complete(&servo_standup) && get_robot_state() == ROBOT_STATE_STANDING_UP) {
+            set_robot_state(ROBOT_STATE_BALANCING); // 기립 완료 후 밸런싱 모드로 전환
+            rgb_led_set_color(robot_mode == MODE_REMOTE_CONTROL ? LED_COLOR_BLUE : LED_COLOR_GREEN);
+        }
+
         // Update state machine first
         state_machine_update();
 
