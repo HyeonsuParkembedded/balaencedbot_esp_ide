@@ -715,7 +715,9 @@ static void control_task(void *pvParameters) {
         }
 
         // Standup completion check
-        if (servo_standup_is_complete(&servo_standup) && get_robot_state() == ROBOT_STATE_STANDING_UP) {
+        // Start balancing as soon as the servo starts retracting (robot is upright)
+        if ((servo_standup_is_complete(&servo_standup) || servo_standup_is_retracting(&servo_standup)) && 
+            get_robot_state() == ROBOT_STATE_STANDING_UP) {
             set_robot_state(ROBOT_STATE_BALANCING);
             rgb_led_set_color(robot_mode == MODE_REMOTE_CONTROL ? LED_COLOR_BLUE : LED_COLOR_GREEN);
         }
@@ -1167,7 +1169,7 @@ static void state_machine_update(void) {
     case ROBOT_STATE_BALANCING:
         if (!cmd.balance) {
             set_robot_state(ROBOT_STATE_IDLE);
-        } else if (cmd.standup) {
+        } else if (cmd.standup && !servo_standup_is_standing_up(&servo_standup)) {
             set_robot_state(ROBOT_STATE_STANDING_UP);
         } else if (fabsf(angle) > CONFIG_FALLEN_ANGLE_THRESHOLD) {
             set_robot_state(ROBOT_STATE_FALLEN);

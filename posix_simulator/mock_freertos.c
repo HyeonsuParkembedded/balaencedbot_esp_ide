@@ -64,6 +64,12 @@ typedef struct {
     bool running;
 } mock_task_t;
 
+static void* thread_wrapper(void* arg) {
+    mock_task_t* t = (mock_task_t*)arg;
+    t->task_code(t->params);
+    return NULL;
+}
+
 BaseType_t xTaskCreate(void (*pxTaskCode)(void*), const char * const pcName, const uint16_t usStackDepth, void * const pvParameters, UBaseType_t uxPriority, TaskHandle_t * const pxCreatedTask) {
     mock_task_t* task = (mock_task_t*)malloc(sizeof(mock_task_t));
     if (task == NULL) return pdFAIL;
@@ -71,13 +77,6 @@ BaseType_t xTaskCreate(void (*pxTaskCode)(void*), const char * const pcName, con
     task->task_code = pxTaskCode;
     task->params = pvParameters;
     task->running = true;
-    
-    // Wrapper function to match pthread signature
-    void* thread_wrapper(void* arg) {
-        mock_task_t* t = (mock_task_t*)arg;
-        t->task_code(t->params);
-        return NULL;
-    }
     
     int ret = pthread_create(&task->thread, NULL, thread_wrapper, task);
     if (ret != 0) {

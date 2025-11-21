@@ -193,6 +193,7 @@ static mock_ble_controller_t ble_ctrl;
 
 // Shared sensor data
 static float filtered_angle = 0.0f;
+static float simulated_true_angle = 0.0f; // New variable for physics output
 static float robot_velocity = 0.0f;
 static bool balancing_enabled __attribute__((unused)) = true;
 
@@ -208,7 +209,7 @@ static TaskHandle_t keyboard_task_handle = NULL;
 #define ESP32C6_SRAM_SIZE_KB    512     // 512KB SRAM
 #define ESP32C6_PERFORMANCE_FACTOR 1.6f // ESP32 대비 성능 향상 계수
 #define SIMULATION_DT           0.005f  // 200Hz simulation rate (ESP32-C6 고성능)
-#define MAX_TILT_ANGLE         45.0f    // Maximum tilt before "fallen" state
+#define MAX_TILT_ANGLE         85.0f    // Maximum tilt before "fallen" state (Increased for standup test)
 
 // ============================================================================
 // Helper Functions
@@ -219,11 +220,25 @@ static void get_current_remote_command(float* target_velocity, float* target_tur
     // 키보드 입력 처리
     process_keyboard_input();
     
+    // Test Sequence: Auto Standup
+    static int tick_count = 0;
+    tick_count++;
+    bool auto_standup = false;
+    if (tick_count > 200 && tick_count < 4000) { // Extended duration for standup test (doubled)
+        auto_standup = true;
+    }
+    
+    // Debug tick count occasionally
+    if (tick_count % 200 == 0) {
+        printf("[DEBUG] Tick: %d, AutoStandup: %d\n", tick_count, auto_standup);
+        fflush(stdout);
+    }
+
     if (ble_controller_is_connected(&ble_ctrl)) {
         *target_velocity = ble_ctrl.current_command.direction * ble_ctrl.current_command.speed * 0.01f; // 0-1 범위로 변환
         *target_turn = ble_ctrl.current_command.turn * 0.01f; // -1 to 1 범위로 변환
         *balance_enabled = ble_ctrl.current_command.balance;
-        *standup_cmd = ble_ctrl.current_command.standup;
+        *standup_cmd = ble_ctrl.current_command.standup || auto_standup;
         *gps_mode = ble_ctrl.current_command.gps_mode;
     } else {
         // 키보드 입력을 기반으로 명령 생성
@@ -243,7 +258,7 @@ static void get_current_remote_command(float* target_velocity, float* target_tur
         }
         
         *balance_enabled = keyboard_state.balance_toggle; // 스페이스바로 토글
-        *standup_cmd = false;
+        *standup_cmd = auto_standup; // 자동 기립 테스트
         *gps_mode = false;
         
         // 종료 요청 처리
@@ -301,6 +316,22 @@ static void set_filtered_angle(float angle) {
     }
 }
 
+static float get_simulated_angle(void) {
+    float angle = 0.0f;
+    if (xSemaphoreTake(data_mutex, portMAX_DELAY) == pdTRUE) {
+        angle = simulated_true_angle;
+        xSemaphoreGive(data_mutex);
+    }
+    return angle;
+}
+
+static void set_simulated_angle(float angle) {
+    if (xSemaphoreTake(data_mutex, portMAX_DELAY) == pdTRUE) {
+        simulated_true_angle = angle;
+        xSemaphoreGive(data_mutex);
+    }
+}
+
 static robot_state_t get_robot_state(void) {
     robot_state_t state = ROBOT_STATE_ERROR;
     if (xSemaphoreTake(state_mutex, portMAX_DELAY) == pdTRUE) {
@@ -314,6 +345,7 @@ static void set_robot_state(robot_state_t new_state) {
     if (xSemaphoreTake(state_mutex, portMAX_DELAY) == pdTRUE) {
         if (current_state != new_state) {
             printf("[%s] State change: %d -> %d\n", TAG, current_state, new_state);
+            fflush(stdout);
             current_state = new_state;
         }
         xSemaphoreGive(state_mutex);
@@ -325,7 +357,7 @@ static void set_robot_state(robot_state_t new_state) {
 // ============================================================================
 static void simulate_physics_step(float motor_output, float dt) {
     // Enhanced physics simulation for balance bot movement
-    static float angle = 0.1f;          // Current angle (radians)
+    static float angle = 88.0f * M_PI / 180.0f; // Start lying down (Fallen state > 85)
     static float angular_velocity = 0.0f; // Angular velocity (rad/s)
     static float position = 0.0f;       // Robot position (m)
     static float velocity = 0.0f;       // Robot velocity (m/s)
@@ -342,7 +374,7 @@ static void simulate_physics_step(float motor_output, float dt) {
     const float length = 0.1f;          // Effective pendulum length (m)
     const float damping = 0.95f;        // Angular damping factor
     const float linear_damping = 0.9f;  // Linear velocity damping
-    const float motor_force_factor = 0.015f; // Motor force scaling
+    const float motor_force_factor = 0.6f; // Motor force scaling (Increased for standup)
     const float velocity_coupling = 0.1f; // How much velocity affects tilt
     
     // Calculate desired tilt angle for forward/backward movement
@@ -350,16 +382,35 @@ static void simulate_physics_step(float motor_output, float dt) {
     float desired_tilt = -target_velocity * velocity_coupling;
     
     // Calculate angular acceleration from gravity, motor force, and movement dynamics
-    float gravity_torque = -(gravity / length) * sin(angle);
+    // FIXED: Gravity is destabilizing for inverted pendulum
+    float gravity_torque = (gravity / length) * sin(angle);
     float motor_torque = motor_output * motor_force_factor;
     float movement_torque = (desired_tilt - angle) * 2.0f; // Gentle correction toward desired tilt
     float angular_acceleration = gravity_torque + motor_torque + movement_torque;
     
+    // Debug physics forces occasionally
+    static int physics_debug = 0;
+    if (++physics_debug >= 50) {
+        printf("[PHYSICS_DEBUG] Angle: %.2f, MotorOut: %.2f, G_Torque: %.2f, M_Torque: %.2f, Accel: %.2f\n", 
+               angle * 180.0f / M_PI, motor_output, gravity_torque, motor_torque, angular_acceleration);
+        fflush(stdout);
+        physics_debug = 0;
+    }
+
     // Integrate angular motion
     angular_velocity += angular_acceleration * dt;
     angular_velocity *= damping; // Apply damping
     angle += angular_velocity * dt;
     
+    // Ground Constraint (Simulate floor at +/- 90 degrees)
+    if (angle > M_PI / 2.0f) {
+        angle = M_PI / 2.0f;
+        if (angular_velocity > 0) angular_velocity = 0.0f; // Stop falling
+    } else if (angle < -M_PI / 2.0f) {
+        angle = -M_PI / 2.0f;
+        if (angular_velocity < 0) angular_velocity = 0.0f; // Stop falling
+    }
+
     // Calculate linear motion based on tilt and motor output
     // When tilted forward (negative angle), robot should move forward (positive velocity)
     float tilt_acceleration = -sin(angle) * gravity * 0.5f; // Tilt contributes to linear motion
@@ -372,16 +423,17 @@ static void simulate_physics_step(float motor_output, float dt) {
     
     // Convert angle to degrees and update shared data
     float angle_degrees = angle * 180.0f / M_PI;
-    set_filtered_angle(angle_degrees);
+    set_simulated_angle(angle_degrees); // Update TRUE physics angle
     
     // Update robot velocity for display (convert m/s to cm/s)
     robot_velocity = velocity * 100.0f;
     
     // Debug output occasionally
     static int debug_counter = 0;
-    if (++debug_counter >= 200) { // Every second at 200Hz
+    if (++debug_counter >= 50) { // Every 0.25s
         printf("[PHYSICS] Pos=%.2fm, Vel=%.2fm/s, Angle=%.1f°, Target=%.2fm/s\n", 
                position, velocity, angle_degrees, target_velocity);
+        fflush(stdout);
         debug_counter = 0;
     }
 }
@@ -402,14 +454,24 @@ static void sensor_task(void *pvParameters) {
     while (1) {
         // Mock IMU data would normally be read here
         // For simulation, we'll use the physics simulation results
-        float current_angle = get_filtered_angle();
+        float current_angle = get_simulated_angle(); // Read TRUE physics angle
         
         // Apply Kalman filtering (with mock gyro data)
-        float mock_gyro = 0.0f; // Simplified - could add noise/dynamics  
-        float filtered = kalman_filter_get_angle(&kalman_filter, current_angle, mock_gyro, 0.005f);
-        set_filtered_angle(filtered);
+        // float mock_gyro = 0.0f; // Simplified - could add noise/dynamics  
+        // float filtered = kalman_filter_get_angle(&kalman_filter, current_angle, mock_gyro, 0.005f);
         
-        BSW_LOGD(TAG, "Sensor: Angle=%.2f°", filtered);
+        // BYPASS KALMAN FOR DEBUGGING STANDUP
+        // The Kalman filter might be diverging or lagging during the violent standup maneuver
+        float filtered = current_angle;
+        
+        set_filtered_angle(filtered); // Write ESTIMATED angle
+        
+        // Log occasionally
+        static int sensor_log = 0;
+        if (++sensor_log >= 20) { // Increased logging frequency (10Hz)
+            BSW_LOGD(TAG, "Sensor: Angle=%.2f° (Bypassed Kalman)", filtered);
+            sensor_log = 0;
+        }
         
         vTaskDelayUntil(&last_wake_time, task_period);
     }
@@ -426,7 +488,8 @@ static void balance_task(void *pvParameters) {
     
     while (1) {
         robot_state_t state = get_robot_state();
-        float current_angle = get_filtered_angle();
+        // float current_angle = get_filtered_angle();
+        float current_angle = get_simulated_angle(); // Direct physics read for simulation stability
         float motor_output = 0.0f;
         
         // 원격 명령 가져오기
@@ -454,6 +517,10 @@ static void balance_task(void *pvParameters) {
             if (balance_enabled && fabsf(current_angle) < MAX_TILT_ANGLE) {
                 set_robot_state(ROBOT_STATE_BALANCING);
                 balance_pid_reset(&balance_pid);
+            }
+            // Check if we are already fallen (start lying down)
+            else if (fabsf(current_angle) >= MAX_TILT_ANGLE) {
+                set_robot_state(ROBOT_STATE_FALLEN);
             }
             motor_output = 0.0f;
             break;
@@ -483,7 +550,11 @@ static void balance_task(void *pvParameters) {
             // 회전 명령 추가 (단순화)
             motor_output += target_turn * 10.0f;
             
-            BSW_LOGD(TAG, "Balance: Angle=%.2f°, Output=%.2f", current_angle, motor_output);
+            static int balance_log = 0;
+            if (++balance_log >= 20) { // Log every 100ms
+                BSW_LOGD(TAG, "Balance: Angle=%.2f°, Output=%.2f", current_angle, motor_output);
+                balance_log = 0;
+            }
             break;
             
         case ROBOT_STATE_FALLEN:
@@ -491,18 +562,58 @@ static void balance_task(void *pvParameters) {
             if (fabsf(current_angle) < 30.0f) {
                 set_robot_state(ROBOT_STATE_IDLE);
             }
+            // Standup Command Check
+            if (standup_cmd) {
+                printf("[DEBUG] Standup command received! Switching to STANDING_UP state.\n");
+                fflush(stdout); // Added flush
+                set_robot_state(ROBOT_STATE_STANDING_UP);
+            }
             motor_output = 0.0f;
             break;
             
         case ROBOT_STATE_STANDING_UP:
             // Standing up sequence (simplified)
             if (standup_cmd) {
-                motor_output = (current_angle > 0) ? -100.0f : 100.0f;
-                if (fabsf(current_angle) < 10.0f) {
+                // 3-Stage Stand Up Strategy (Revised)
+                // Stage 1: Strong kick (160) to overcome initial gravity (90 -> 40 deg)
+                // Stage 2: Moderate lift (110) to bring it upright without overshooting (40 -> 20 deg)
+                // Stage 3: Handover to PID (< 20 deg)
+                
+                float force_mag;
+                if (fabsf(current_angle) > 40.0f) {
+                    force_mag = 160.0f;
+                } else {
+                    force_mag = 110.0f;
+                }
+                
+                // Direction depends on which side we are lying on
+                // Note: In this sim, positive angle means lying back? 
+                // Let's check previous code: motor_output = (current_angle > 0) ? -force_mag : force_mag;
+                // Wait, previous code had: (current_angle > 0) ? -force_mag : force_mag;
+                // This means if angle is positive, we apply negative torque to stand up.
+                // Let's keep that sign convention.
+                motor_output = (current_angle > 0) ? -force_mag : force_mag;
+                
+                static int standup_log = 0;
+                if (++standup_log >= 10) { // Log every 50ms
+                    printf("[DEBUG] Standing Up: Angle=%.2f, Output=%.2f\n", current_angle, motor_output);
+                    fflush(stdout);
+                    standup_log = 0;
+                }
+                
+                // Early handover to PID (at 20 degrees)
+                if (fabsf(current_angle) < 20.0f) {
+                    printf("[DEBUG] Handover to PID at Angle=%.2f\n", current_angle);
                     set_robot_state(ROBOT_STATE_IDLE);
                 }
             } else {
                 motor_output = 0.0f;
+                static int standup_idle_log = 0;
+                if (++standup_idle_log >= 20) {
+                    printf("[DEBUG] Standing Up State but NO CMD. Output=0\n");
+                    fflush(stdout);
+                    standup_idle_log = 0;
+                }
             }
             break;
             
@@ -631,6 +742,10 @@ static void initialize_robot_systems(void) {
     float velocity_ki = config_manager_get_param(4);
     float velocity_kd = config_manager_get_param(5);
     
+    // Override for standup test (Stronger motor requires lower Kp)
+    balance_kp = 8.0f;
+    balance_kd = 4.0f;
+
     balance_pid_set_balance_tunings(&balance_pid, balance_kp, balance_ki, balance_kd);
     balance_pid_set_velocity_tunings(&balance_pid, velocity_kp, velocity_ki, velocity_kd);
     balance_pid_set_max_tilt_angle(&balance_pid, MAX_TILT_ANGLE);
@@ -730,13 +845,13 @@ int main(void) {
     // Create FreeRTOS tasks
     BaseType_t result;
     
-    result = xTaskCreate(sensor_task, "sensor_task", 4096, NULL, 5, &sensor_task_handle);
+    result = xTaskCreate(sensor_task, "sensor_task", 8192, NULL, 5, &sensor_task_handle);
     if (result != pdPASS) {
         printf("[%s] Failed to create sensor task\n", TAG);
         return -1;
     }
     
-    result = xTaskCreate(balance_task, "balance_task", 4096, NULL, 4, &balance_task_handle);
+    result = xTaskCreate(balance_task, "balance_task", 8192, NULL, 4, &balance_task_handle);
     if (result != pdPASS) {
         printf("[%s] Failed to create balance task\n", TAG);
         return -1;

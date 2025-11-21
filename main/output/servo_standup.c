@@ -207,6 +207,18 @@ bool servo_standup_is_complete(const servo_standup_t* servo) {
 }
 
 /**
+ * @brief 기립 동작 중 격납 단계인지 확인 구현
+ * 
+ * 서보 팔이 격납되는 중인지 확인합니다.
+ * 
+ * @param servo 서보 기립 구조체 포인터
+ * @return bool 격납 중 상태
+ */
+bool servo_standup_is_retracting(const servo_standup_t* servo) {
+    return servo->state == STANDUP_RETRACTING;
+}
+
+/**
  * @brief 기립 프로세스 리셋 구현
  * 
  * 기립 상태를 초기 상태로 되돌리고 모든 플래그를 초기화합니다.

@@ -115,6 +115,17 @@ bool servo_standup_is_standing_up(const servo_standup_t* servo);
 bool servo_standup_is_complete(const servo_standup_t* servo);
 
 /**
+ * @brief 기립 동작 중 격납 단계인지 확인
+ * 
+ * 서보 팔이 격납되는 중인지 확인합니다.
+ * 이 시점에서 밸런싱 제어가 시작되어야 합니다.
+ * 
+ * @param servo 서보 기립 구조체 포인터
+ * @return bool 격납 중 상태
+ */
+bool servo_standup_is_retracting(const servo_standup_t* servo);
+
+/**
  * @brief 기립 시스템 리셋
  * 
  * 기립 상태를 초기 상태로 되돌립니다.
