@@ -8,7 +8,7 @@
 
 #include "gps_sensor.h"
 #include "esp_log.h"
-#include "driver/uart.h"
+#include "../bsw/uart_driver.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -27,7 +27,7 @@ static bool parse_gprmc(gps_sensor_t* gps, const char* sentence);
 /**
  * @brief Initialize GPS sensor
  */
-esp_err_t gps_sensor_init(gps_sensor_t* gps, uart_port_t uart_num, int tx_pin, int rx_pin, int baud_rate) {
+esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t uart_num, bsw_gpio_num_t tx_pin, bsw_gpio_num_t rx_pin, int baud_rate) {
     if (gps == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -42,37 +42,10 @@ esp_err_t gps_sensor_init(gps_sensor_t* gps, uart_port_t uart_num, int tx_pin, i
     gps->data.speed_kmh = 0.0f;
     gps->data.satellites = 0;
 
-    uart_config_t uart_config = {
-        .baud_rate = baud_rate,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT,
-    };
-
-    // Install UART driver
-    // Rx buffer size 512, Tx buffer size 0 (we don't send much), event queue 0
-    // Note: If driver is already installed, this might fail, but we assume init is called once.
-    if (uart_is_driver_installed(uart_num)) {
-        uart_driver_delete(uart_num);
-    }
-
-    esp_err_t ret = uart_driver_install(uart_num, 512, 0, 0, NULL, 0);
+    // Initialize BSW UART driver
+    esp_err_t ret = uart_driver_init(uart_num, baud_rate, tx_pin, rx_pin);
     if (ret != ESP_OK) {
-        BSW_LOGE(GPS_TAG, "Failed to install UART driver");
-        return ret;
-    }
-
-    ret = uart_param_config(uart_num, &uart_config);
-    if (ret != ESP_OK) {
-        BSW_LOGE(GPS_TAG, "Failed to configure UART parameters");
-        return ret;
-    }
-
-    ret = uart_set_pin(uart_num, tx_pin, rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    if (ret != ESP_OK) {
-        BSW_LOGE(GPS_TAG, "Failed to set UART pins");
+        BSW_LOGE(GPS_TAG, "Failed to initialize UART driver");
         return ret;
     }
 
@@ -94,8 +67,8 @@ esp_err_t gps_sensor_update(gps_sensor_t* gps) {
     static int line_idx = 0;
     
     uint8_t temp_buf[64];
-    // Non-blocking read
-    int len = uart_read_bytes(gps->uart_port, temp_buf, sizeof(temp_buf), 0);
+    // Non-blocking read using BSW driver
+    int len = uart_read_data(gps->uart_port, temp_buf, sizeof(temp_buf), 0);
 
     for (int i = 0; i < len; i++) {
         uint8_t c = temp_buf[i];

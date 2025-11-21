@@ -21,7 +21,7 @@
 #include <sys/select.h>
 
 // FreeRTOS includes
-#include "FreeRTOS.h"
+#include "mock_freertos.h"
 #include "task.h"
 #include "semphr.h"
 #include "queue.h"
@@ -59,6 +59,7 @@ typedef struct {
         int speed;
         bool balance;
         bool standup;
+        bool gps_mode;
     } current_command;
     char last_command[64];
     bool has_text_command;
@@ -214,7 +215,7 @@ static TaskHandle_t keyboard_task_handle = NULL;
 // ============================================================================
 
 // 현재 원격 명령 가져오기
-static void get_current_remote_command(float* target_velocity, float* target_turn, bool* balance_enabled, bool* standup_cmd) {
+static void get_current_remote_command(float* target_velocity, float* target_turn, bool* balance_enabled, bool* standup_cmd, bool* gps_mode) {
     // 키보드 입력 처리
     process_keyboard_input();
     
@@ -223,6 +224,7 @@ static void get_current_remote_command(float* target_velocity, float* target_tur
         *target_turn = ble_ctrl.current_command.turn * 0.01f; // -1 to 1 범위로 변환
         *balance_enabled = ble_ctrl.current_command.balance;
         *standup_cmd = ble_ctrl.current_command.standup;
+        *gps_mode = ble_ctrl.current_command.gps_mode;
     } else {
         // 키보드 입력을 기반으로 명령 생성
         *target_velocity = 0.0f;
@@ -242,6 +244,7 @@ static void get_current_remote_command(float* target_velocity, float* target_tur
         
         *balance_enabled = keyboard_state.balance_toggle; // 스페이스바로 토글
         *standup_cmd = false;
+        *gps_mode = false;
         
         // 종료 요청 처리
         if (keyboard_state.quit) {
@@ -330,8 +333,8 @@ static void simulate_physics_step(float motor_output, float dt) {
     
     // Get target velocity from remote commands
     float cmd_velocity, cmd_turn;
-    bool balance_enabled, standup_cmd;
-    get_current_remote_command(&cmd_velocity, &cmd_turn, &balance_enabled, &standup_cmd);
+    bool balance_enabled, standup_cmd, gps_mode;
+    get_current_remote_command(&cmd_velocity, &cmd_turn, &balance_enabled, &standup_cmd, &gps_mode);
     target_velocity = cmd_velocity * 2.0f; // Scale command to m/s
     
     // Physical constants (approximate for balance bot)
@@ -428,8 +431,17 @@ static void balance_task(void *pvParameters) {
         
         // 원격 명령 가져오기
         float target_velocity, target_turn;
-        bool balance_enabled, standup_cmd;
-        get_current_remote_command(&target_velocity, &target_turn, &balance_enabled, &standup_cmd);
+        bool balance_enabled, standup_cmd, gps_mode;
+        get_current_remote_command(&target_velocity, &target_turn, &balance_enabled, &standup_cmd, &gps_mode);
+        
+        if (gps_mode) {
+            // GPS 모드 시뮬레이션 (로그만 출력)
+            static int gps_log_counter = 0;
+            if (++gps_log_counter >= 200) {
+                BSW_LOGI(TAG, "GPS Mode Active - Autonomous Navigation Simulation");
+                gps_log_counter = 0;
+            }
+        }
         
         switch (state) {
         case ROBOT_STATE_INIT:

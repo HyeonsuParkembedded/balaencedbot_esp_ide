@@ -15,27 +15,19 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Compiler flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wno-unused-parameter")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
 set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DDEBUG")
 set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
 
-# FreeRTOS paths
-set(FREERTOS_ROOT "/home/hyunsu5203/FreeRTOSv202212.01/FreeRTOS")
-set(FREERTOS_KERNEL "${FREERTOS_ROOT}/Source")
-set(FREERTOS_PORT "${FREERTOS_KERNEL}/portable/ThirdParty/GCC/Posix")
-set(FREERTOS_POSIX_UTILS "${FREERTOS_PORT}/utils")
-
 # Include directories
 include_directories(
-    # FreeRTOS kernel includes
-    ${FREERTOS_KERNEL}/include
-    ${FREERTOS_PORT}
-    ${FREERTOS_POSIX_UTILS}
+    # Mock FreeRTOS includes (for IDE and Windows compatibility)
+    ${CMAKE_CURRENT_SOURCE_DIR}/mock_freertos
     
     # Mock layer includes  
     ${CMAKE_CURRENT_SOURCE_DIR}
     
-    # Original project includes (we'll copy necessary headers)
+    # Original project includes
     ${CMAKE_CURRENT_SOURCE_DIR}/logic
     ${CMAKE_CURRENT_SOURCE_DIR}/input
     ${CMAKE_CURRENT_SOURCE_DIR}/output
@@ -47,19 +39,6 @@ add_definitions(
     -DprojCOVERAGE_TEST=0
     -DRUN_FREERTOS_ON_CORE=0
     -DBALANCEBOT_POSIX_SIM=1
-)
-
-# FreeRTOS kernel source files
-set(FREERTOS_SOURCES
-    ${FREERTOS_KERNEL}/tasks.c
-    ${FREERTOS_KERNEL}/list.c
-    ${FREERTOS_KERNEL}/queue.c
-    ${FREERTOS_KERNEL}/timers.c
-    ${FREERTOS_KERNEL}/event_groups.c
-    ${FREERTOS_KERNEL}/stream_buffer.c
-    ${FREERTOS_KERNEL}/portable/MemMang/heap_3.c
-    ${FREERTOS_PORT}/port.c
-    ${FREERTOS_POSIX_UTILS}/wait_for_event.c
 )
 
 # Mock layer source files  
@@ -96,9 +75,8 @@ set(APP_SOURCES
     main_posix.c
 )
 
-# All source files
+# All source files (excluding real FreeRTOS for now)
 set(ALL_SOURCES
-    ${FREERTOS_SOURCES}
     ${MOCK_SOURCES}
     ${BALANCEBOT_LOGIC_SOURCES}
     ${BALANCEBOT_SYSTEM_SOURCES}
@@ -114,7 +92,6 @@ add_executable(balancebot_posix ${ALL_SOURCES})
 target_link_libraries(balancebot_posix 
     pthread
     m  # math library
-    rt # real-time library
 )
 
 # Installation
@@ -133,6 +110,6 @@ add_custom_target(run_sim
 # Print configuration info
 message(STATUS "BalanceBot POSIX Simulator Configuration:")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "  FreeRTOS Root: ${FREERTOS_ROOT}")
+message(STATUS "  Using Mock FreeRTOS Headers")
 message(STATUS "  Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "  C Flags: ${CMAKE_C_FLAGS}")

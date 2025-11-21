@@ -93,7 +93,7 @@ typedef struct {
 
 // 하드웨어 레지스터 직접 주소 (ESP32-C6 Technical Reference Manual 기준)
 // ESP32-C6 GPIO 베이스 주소: 0x60004000 (TRM Chapter 6)
-#define GPIO_BASE_ADDR      0x60004000UL
+#define GPIO_BASE_ADDR      0x60091000UL
 
 // BSW GPIO 레지스터 오프셋 주소들 (ESP32-C6 TRM 정확한 오프셋)
 #define BSW_GPIO_OUT_REG        (GPIO_BASE_ADDR + 0x0004)    ///< GPIO 출력 레지스터

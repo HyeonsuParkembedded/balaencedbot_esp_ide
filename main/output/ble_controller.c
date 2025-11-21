@@ -2,10 +2,7 @@
  * @file ble_controller.c
  * @brief BLE (Bluetooth Low Energy) 컨트롤러 구현
  * 
- * BSW BLE 드라이버를 사용하여 모바일 앱과의 무    if (!ble_start_advertising()) {
-        BSW_LOGE(TAG, "Failed to start advertising");
-        return ESP_FAIL;
-    } 구현합니다.
+ * BSW BLE 드라이버를 사용하여 모바일 앱과의 무선 통신을 구현합니다.
  * GATT 서버로 동작하며, 명령 수신 및 상태 전송 기능을 제공합니다.
  * 
  * @author Hyeonsu Park, Suyong Kim

@@ -37,7 +37,7 @@
  */
 
 // I2C Controller Base Addresses (ESP32-C6 has only 1 I2C controller)
-#define I2C0_BASE_ADDR          0x60013000UL
+#define I2C0_BASE_ADDR          0x60005000UL
 // #define I2C1_BASE_ADDR       0x60014000UL  // ❌ NOT AVAILABLE on ESP32-C6
 
 // I2C Register Offsets (ESP32-C6 TRM Chapter 24.4)

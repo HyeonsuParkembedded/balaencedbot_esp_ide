@@ -32,9 +32,9 @@
 #include "freertos/semphr.h"
 
 // ESP32-C6 UART 하드웨어 레지스터 직접 접근 정의
-#define UART_BASE_ADDR          0x60000000UL    ///< UART 베이스 주소
-#define UART0_BASE             (UART_BASE_ADDR + 0x0000)  ///< UART0 베이스
-#define UART1_BASE             (UART_BASE_ADDR + 0x10000) ///< UART1 베이스
+#define UART_BASE_ADDR          0x60001000UL    ///< UART0 Base Address
+#define UART0_BASE             (UART_BASE_ADDR)           ///< UART0 Base
+#define UART1_BASE             (0x60002000UL)             ///< UART1 Base
 
 // UART 레지스터 오프셋 (ESP32-C6 기준)
 #define UART_FIFO_REG_OFFSET        0x0000  ///< FIFO 데이터 레지스터

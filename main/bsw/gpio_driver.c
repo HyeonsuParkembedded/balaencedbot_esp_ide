@@ -22,11 +22,6 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
-// ESP32-C6 GPIO 인터럽트 소스 번호 (soc/interrupts.h에 정의되어야 하지만 대체 정의)
-#ifndef ETS_GPIO_INTR_SOURCE
-#define ETS_GPIO_INTR_SOURCE 16  // ESP32-C6 GPIO interrupt source
-#endif
-
 static const char* TAG = "BSW_GPIO";
 
 // FreeRTOS Mutex for GPIO thread safety

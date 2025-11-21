@@ -38,7 +38,7 @@
  */
 
 // SPI Controller Base Addresses (ESP32-C6 has 2 SPI controllers: SPI2)
-#define SPI2_BASE_ADDR          0x60003000UL    ///< SPI2 Base Address
+#define SPI2_BASE_ADDR          0x60080000UL    ///< SPI2 Base Address
 
 // SPI Register Offsets (ESP32-C6 TRM Chapter 28)
 #define SPI_CMD_REG_OFFSET              0x0000  ///< Command Register

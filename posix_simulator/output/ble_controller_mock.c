@@ -36,6 +36,7 @@ typedef struct {
     int speed;
     bool balance;
     bool standup;
+    bool gps_mode;
 } remote_command_t;
 
 // BLE 컨트롤러 상태 구조체
@@ -62,6 +63,7 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     ble->current_command.speed = 0;
     ble->current_command.balance = true;
     ble->current_command.standup = false;
+    ble->current_command.gps_mode = false;
     
     // 표준 입력을 논블로킹 모드로 설정
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
@@ -70,6 +72,7 @@ esp_err_t ble_controller_init(ble_controller_t* ble, const char* device_name) {
     initialized = true;
     ESP_LOGI(TAG, "BLE Controller Mock initialized (%s)", device_name);
     ESP_LOGI(TAG, "Commands: 'w'=forward, 's'=backward, 'a'=left, 'd'=right, ' '=stop");
+    ESP_LOGI(TAG, "Commands: 'b'=balance toggle, 'u'=stand up, 'g'=GPS mode toggle");
     ESP_LOGI(TAG, "Text commands: 'SET 0 25.5', 'GET 0', 'SAVE', 'RESET'");
     
     return ESP_OK;
@@ -142,6 +145,10 @@ void ble_controller_update(ble_controller_t* ble) {
             case 'u': // 기립
                 ble->current_command.standup = true;
                 ESP_LOGI(TAG, "Command: Stand Up");
+                break;
+            case 'g': // GPS 모드 토글
+                ble->current_command.gps_mode = !ble->current_command.gps_mode;
+                ESP_LOGI(TAG, "GPS Mode: %s", ble->current_command.gps_mode ? "ON" : "OFF");
                 break;
             case 'q': // 종료
                 ESP_LOGI(TAG, "Quit command received");

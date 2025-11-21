@@ -7,8 +7,8 @@
 #define GPS_SENSOR_H
 
 #include <stdbool.h>
-#include "driver/uart.h"
-
+#include "../bsw/uart_driver.h"
+#include "../bsw/gpio_driver.h"
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -29,7 +29,7 @@ typedef struct {
         int satellites;
         bool fix_valid;
     } data;
-    uart_port_t uart_port;
+    bsw_uart_num_t uart_port;
 } gps_sensor_t;
 
 /**
@@ -41,7 +41,7 @@ typedef struct {
  * @param baud_rate Baud rate
  * @return ESP_OK on success
  */
-esp_err_t gps_sensor_init(gps_sensor_t* gps, uart_port_t uart_num, int tx_pin, int rx_pin, int baud_rate);
+esp_err_t gps_sensor_init(gps_sensor_t* gps, bsw_uart_num_t uart_num, bsw_gpio_num_t tx_pin, bsw_gpio_num_t rx_pin, int baud_rate);
 
 /**
  * @brief Update GPS sensor data
