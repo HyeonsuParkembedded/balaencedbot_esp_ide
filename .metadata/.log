@@ -1,0 +1,147 @@
+!SESSION 2025-11-21 17:42:38.511 -----------------------------------------------
+eclipse.buildId=unknown
+java.version=17.0.6
+java.vendor=Amazon.com Inc.
+BootLoader constants: OS=win32, ARCH=x86_64, WS=win32, NL=ko_KR
+Command-line arguments:  -os win32 -ws win32 -arch x86_64
+
+!ENTRY org.eclipse.launchbar.core 2 0 2025-11-21 17:43:06.479
+!MESSAGE Enablement expression is missing for descriptor type com.espressif.idf.debug.gdbjtag.openocd.descriptorType
+
+!ENTRY org.eclipse.launchbar.core 2 0 2025-11-21 17:43:06.482
+!MESSAGE Enablement expression is missing for config provider for com.espressif.idf.debug.gdbjtag.openocd.descriptorType
+
+!ENTRY org.eclipse.launchbar.core 2 0 2025-11-21 17:43:06.482
+!MESSAGE Enablement expression is missing for config provider for com.espressif.idf.launch.serial.core.idf.descriptorType
+
+!ENTRY org.eclipse.launchbar.core 2 0 2025-11-21 17:43:06.483
+!MESSAGE Enablement expression is missing for descriptor type com.espressif.idf.launch.serial.core.idf.descriptorType
+
+!ENTRY org.eclipse.ui.workbench 4 0 2025-11-21 17:43:06.487
+!MESSAGE Failed to obtain 'WinDefend' service state
+!STACK 0
+java.io.IOException: Cannot run program "powershell.exe": CreateProcess error=2, 지정된 파일을 찾을 수 없습니다
+	at java.base/java.lang.ProcessBuilder.start(ProcessBuilder.java:1143)
+	at java.base/java.lang.ProcessBuilder.start(ProcessBuilder.java:1073)
+	at org.eclipse.ui.internal.WindowsDefenderConfigurator.runProcess(WindowsDefenderConfigurator.java:373)
+	at org.eclipse.ui.internal.WindowsDefenderConfigurator.runPowershell(WindowsDefenderConfigurator.java:368)
+	at org.eclipse.ui.internal.WindowsDefenderConfigurator.isWindowsDefenderServiceRunning(WindowsDefenderConfigurator.java:302)
+	at org.eclipse.ui.internal.WindowsDefenderConfigurator.runExclusionCheck(WindowsDefenderConfigurator.java:159)
+	at org.eclipse.ui.internal.WindowsDefenderConfigurator.lambda$0(WindowsDefenderConfigurator.java:106)
+	at org.eclipse.core.runtime.jobs.Job$2.run(Job.java:187)
+	at org.eclipse.core.internal.jobs.Worker.run(Worker.java:63)
+Caused by: java.io.IOException: CreateProcess error=2, 지정된 파일을 찾을 수 없습니다
+	at java.base/java.lang.ProcessImpl.create(Native Method)
+	at java.base/java.lang.ProcessImpl.<init>(ProcessImpl.java:499)
+	at java.base/java.lang.ProcessImpl.start(ProcessImpl.java:158)
+	at java.base/java.lang.ProcessBuilder.start(ProcessBuilder.java:1110)
+	... 8 more
+
+!ENTRY com.espressif.idf.core 1 0 2025-11-21 17:43:08.044
+!MESSAGE Initializing toolchain...
+
+!ENTRY com.espressif.idf.core 1 0 2025-11-21 17:43:08.045
+!MESSAGE idf_tools.py path: null/tools/idf_tools.py
+
+!ENTRY com.espressif.idf.core 1 0 2025-11-21 17:43:08.045
+!MESSAGE idf_tools.py path doesn't exist
+
+!ENTRY com.espressif.idf.core 1 0 2025-11-21 17:43:08.046
+!MESSAGE [C:\Program Files\Common Files\Oracle\Java\javapath;C:\Program Files (x86)\Common Files\Oracle\Java\java8path;C:\Program Files (x86)\Common Files\Oracle\Java\javapath;C:\flutter\bin;C:\Program Files\dotnet\;C:\Program Files\Git\cmd;C:\Windows\System32;C:\Program Files\MATLAB\R2025a\runtime\win64;C:\Program Files\MATLAB\R2025a\bin;C:\Program Files\nodejs\;C:\Program Files\PowerShell\7\;C:\Users\hyuns\.rustup\toolchains\esp\xtensa-esp32-elf-clang\esp-clang\bin;C:\Users\hyuns\.rustup\toolchains\esp\xtensa-esp-elf\bin;C:\Espressif\tools\idf-python\3.11.2\;C:\Espressif\tools\idf-git\2.44.0\cmd\;C:\Users\hyuns\AppData\Local\Perplexity\Comet\Application;C:\Program Files\Common Files\Oracle\Java\javapath;C:\Program Files (x86)\Common Files\Oracle\Java\java8path;C:\Program Files (x86)\Common Files\Oracle\Java\javapath;C:\flutter\bin;C:\Program Files\dotnet\;C:\Program Files\Git\cmd;C:\Windows\System32;C:\Program Files\MATLAB\R2025a\runtime\win64;C:\Program Files\MATLAB\R2025a\bin;C:\Program Files\nodejs\;C:\Program Files\PowerShell\7\;C:\Users\hyuns\AppData\Local\Microsoft\WindowsApps;C:\Users\hyuns\.dotnet\tools;C:\Users\hyuns\AppData\Local\Programs\Ollama;C:\Users\hyuns\AppData\Local\GitHubDesktop\bin;C:\Users\hyuns\AppData\Local\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin;C:\Users\hyuns\.bun\bin;C:\flutter\bin;C:\Users\hyuns\AppData\Local\Programs\cursor\resources\app\bin;C:\Users\hyuns\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\hyuns\App;C:\Users\hyuns\AppData\Local\Programs\jaguar;C:\Users\hyuns\AppData\Local\Programs\Antigravity\bin]
+
+!ENTRY com.espressif.idf.core 4 0 2025-11-21 17:43:09.570
+!MESSAGE \esp-config.json (지정된 파일을 찾을 수 없습니다)
+!STACK 0
+java.io.FileNotFoundException: \esp-config.json (지정된 파일을 찾을 수 없습니다)
+	at java.base/java.io.FileInputStream.open0(Native Method)
+	at java.base/java.io.FileInputStream.open(FileInputStream.java:216)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:157)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:111)
+	at java.base/java.io.FileReader.<init>(FileReader.java:60)
+	at com.espressif.idf.core.util.EspConfigParser.getBoardsConfigs(EspConfigParser.java:103)
+	at com.espressif.idf.core.DefaultBoardProvider.getDefaultBoard(DefaultBoardProvider.java:57)
+	at com.espressif.idf.core.toolchain.ESPToolChainManager.addLaunchTargets(ESPToolChainManager.java:491)
+	at com.espressif.idf.core.toolchain.ESPToolChainManager.addToolchainBasedTargets(ESPToolChainManager.java:445)
+	at com.espressif.idf.launch.serial.SerialFlashLaunchTargetProvider.init(SerialFlashLaunchTargetProvider.java:33)
+	at org.eclipse.launchbar.core.internal.target.LaunchTargetManager.initTargets(LaunchTargetManager.java:123)
+	at org.eclipse.launchbar.core.internal.target.LaunchTargetManager.getProvider(LaunchTargetManager.java:130)
+	at org.eclipse.launchbar.core.internal.target.LaunchTargetManager.getStatus(LaunchTargetManager.java:191)
+	at org.eclipse.launchbar.ui.controls.internal.TargetSelector.setToolTipText(TargetSelector.java:217)
+	at org.eclipse.launchbar.ui.controls.internal.TargetSelector.update(TargetSelector.java:248)
+	at org.eclipse.launchbar.ui.controls.internal.CSelector.lambda$6(CSelector.java:468)
+	at org.eclipse.swt.widgets.RunnableLock.run(RunnableLock.java:40)
+	at org.eclipse.swt.widgets.Synchronizer.runAsyncMessages(Synchronizer.java:132)
+	at org.eclipse.swt.widgets.Display.runAsyncMessages(Display.java:4058)
+	at org.eclipse.swt.widgets.Display.readAndDispatch(Display.java:3676)
+	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine$5.run(PartRenderingEngine.java:1151)
+	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:339)
+	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine.run(PartRenderingEngine.java:1042)
+	at org.eclipse.e4.ui.internal.workbench.E4Workbench.createAndRunUI(E4Workbench.java:152)
+	at org.eclipse.ui.internal.Workbench.lambda$3(Workbench.java:639)
+	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:339)
+	at org.eclipse.ui.internal.Workbench.createAndRunWorkbench(Workbench.java:546)
+	at org.eclipse.ui.PlatformUI.createAndRunWorkbench(PlatformUI.java:173)
+	at org.eclipse.ui.internal.ide.application.IDEApplication.start(IDEApplication.java:152)
+	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:208)
+	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:143)
+	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:109)
+	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:439)
+	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:271)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:668)
+	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:605)
+	at org.eclipse.equinox.launcher.Main.run(Main.java:1481)
+	at org.eclipse.equinox.launcher.Main.main(Main.java:1454)
+
+!ENTRY com.espressif.idf.core 4 0 2025-11-21 17:43:09.572
+!MESSAGE Index 0 out of bounds for length 0
+!STACK 0
+java.lang.ArrayIndexOutOfBoundsException: Index 0 out of bounds for length 0
+	at com.espressif.idf.core.DefaultBoardProvider.getDefaultBoard(DefaultBoardProvider.java:59)
+	at com.espressif.idf.core.toolchain.ESPToolChainManager.addLaunchTargets(ESPToolChainManager.java:491)
+	at com.espressif.idf.core.toolchain.ESPToolChainManager.addToolchainBasedTargets(ESPToolChainManager.java:445)
+	at com.espressif.idf.launch.serial.SerialFlashLaunchTargetProvider.init(SerialFlashLaunchTargetProvider.java:33)
+	at org.eclipse.launchbar.core.internal.target.LaunchTargetManager.initTargets(LaunchTargetManager.java:123)
+	at org.eclipse.launchbar.core.internal.target.LaunchTargetManager.getProvider(LaunchTargetManager.java:130)
+	at org.eclipse.launchbar.core.internal.target.LaunchTargetManager.getStatus(LaunchTargetManager.java:191)
+	at org.eclipse.launchbar.ui.controls.internal.TargetSelector.setToolTipText(TargetSelector.java:217)
+	at org.eclipse.launchbar.ui.controls.internal.TargetSelector.update(TargetSelector.java:248)
+	at org.eclipse.launchbar.ui.controls.internal.CSelector.lambda$6(CSelector.java:468)
+	at org.eclipse.swt.widgets.RunnableLock.run(RunnableLock.java:40)
+	at org.eclipse.swt.widgets.Synchronizer.runAsyncMessages(Synchronizer.java:132)
+	at org.eclipse.swt.widgets.Display.runAsyncMessages(Display.java:4058)
+	at org.eclipse.swt.widgets.Display.readAndDispatch(Display.java:3676)
+	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine$5.run(PartRenderingEngine.java:1151)
+	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:339)
+	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine.run(PartRenderingEngine.java:1042)
+	at org.eclipse.e4.ui.internal.workbench.E4Workbench.createAndRunUI(E4Workbench.java:152)
+	at org.eclipse.ui.internal.Workbench.lambda$3(Workbench.java:639)
+	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:339)
+	at org.eclipse.ui.internal.Workbench.createAndRunWorkbench(Workbench.java:546)
+	at org.eclipse.ui.PlatformUI.createAndRunWorkbench(PlatformUI.java:173)
+	at org.eclipse.ui.internal.ide.application.IDEApplication.start(IDEApplication.java:152)
+	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:208)
+	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:143)
+	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:109)
+	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:439)
+	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:271)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:668)
+	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:605)
+	at org.eclipse.equinox.launcher.Main.run(Main.java:1481)
+	at org.eclipse.equinox.launcher.Main.main(Main.java:1454)
+
+!ENTRY com.espressif.idf.core 1 0 2025-11-21 17:43:09.633
+!MESSAGE Eclipse Install location::file:/C:/Espressif/tools/espressif-ide/3.1.0/
+
+!ENTRY com.espressif.idf.core 1 0 2025-11-21 17:43:09.679
+!MESSAGE Executing C:/Espressif/python_env/idf5.5_py3.11_env/Scripts/python.exe C:\Espressif\frameworks\esp-idf-v5.5.1\tools\idf_tools.py export --format=key-value
+
+!ENTRY org.eclipse.core.jobs 2 2 2025-11-21 17:43:11.737
+!MESSAGE Job found still running after platform shutdown.  Jobs should be canceled by the plugin that scheduled them during shutdown: com.espressif.idf.ui.tools.ToolsActivationJob
