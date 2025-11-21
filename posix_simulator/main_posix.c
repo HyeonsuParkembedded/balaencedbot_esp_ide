@@ -21,7 +21,7 @@
 #include <sys/select.h>
 
 // FreeRTOS includes
-#include "mock_freertos.h"
+#include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
 #include "queue.h"

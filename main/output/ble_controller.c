@@ -354,3 +354,22 @@ const char* ble_controller_get_text_command(ble_controller_t* ble) {
     
     return ble->last_command;
 }
+
+/**
+ * @brief 원시 데이터 전송 구현 (고속 로깅용)
+ */
+esp_err_t ble_controller_send_raw(ble_controller_t* ble, const uint8_t* data, size_t length) {
+    if (!ble->device_connected) {
+        return ESP_FAIL;
+    }
+    
+    // Send via BSW BLE driver
+    if (!ble_send_data(ble->conn_handle, ble->status_char_handle,
+                       data, length)) {
+        // High-frequency logging might fill buffers, so suppress error logs
+        // BSW_LOGE(TAG, "Failed to send raw data");
+        return ESP_FAIL;
+    }
+    
+    return ESP_OK;
+}

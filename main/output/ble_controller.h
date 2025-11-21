@@ -130,6 +130,19 @@ bool ble_controller_is_connected(const ble_controller_t* ble);
 esp_err_t ble_controller_send_status(ble_controller_t* ble, float angle, float velocity, float battery_voltage);
 
 /**
+ * @brief 원시 데이터 전송 (고속 로깅용)
+ * 
+ * 바이너리 데이터를 BLE를 통해 직접 전송합니다.
+ * PID 튜닝 등을 위한 고속 텔레메트리에 사용됩니다.
+ * 
+ * @param ble BLE 컨트롤러 구조체 포인터
+ * @param data 전송할 데이터 버퍼
+ * @param length 데이터 길이
+ * @return esp_err_t 전송 결과
+ */
+esp_err_t ble_controller_send_raw(ble_controller_t* ble, const uint8_t* data, size_t length);
+
+/**
  * @brief BLE 패킷 처리
  * 
  * 수신된 BLE 데이터 패킷을 파싱하여 명령으로 변환합니다.

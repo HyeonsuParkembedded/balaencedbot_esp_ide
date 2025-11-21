@@ -58,6 +58,7 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_nu
     sensor->data.accel_x = sensor->data.accel_y = sensor->data.accel_z = 0.0f;
     sensor->data.gyro_x = sensor->data.gyro_y = sensor->data.gyro_z = 0.0f;
     sensor->data.pitch = sensor->data.roll = 0.0f;
+    sensor->data.pitch_offset = 0.0f;
     sensor->data.initialized = false;
 
     // Initialize I2C driver
@@ -105,7 +106,6 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_nu
     sensor->data.initialized = true;
 
     BSW_LOGI(IMU_TAG, "IMU sensor initialized successfully");
-    return ESP_OK;
 }
 
 /**
@@ -155,6 +155,7 @@ esp_err_t imu_sensor_update(imu_sensor_t* sensor) {
 
     // Calculate pitch and roll from accelerometer
     sensor->data.pitch = atan2(-sensor->data.accel_x, sqrt(sensor->data.accel_y * sensor->data.accel_y + sensor->data.accel_z * sensor->data.accel_z)) * 180.0f / M_PI;
+    sensor->data.pitch -= sensor->data.pitch_offset; // Apply offset
     sensor->data.roll = atan2(sensor->data.accel_y, sensor->data.accel_z) * 180.0f / M_PI;
 
     return ESP_OK;
@@ -268,4 +269,17 @@ float imu_sensor_get_accel_z(imu_sensor_t* sensor) {
  */
 bool imu_sensor_is_initialized(imu_sensor_t* sensor) {
     return sensor->data.initialized;
+}
+
+/**
+ * @brief 피치 각도 오프셋 설정
+ * 
+ * 자이로스코프 캘리브레이션을 통해 측정된 오프셋 값을 설정합니다.
+ * 이 값은 이후 측정되는 피치 각도에서 차감됩니다.
+ * 
+ * @param sensor IMU 센서 구조체 포인터
+ * @param offset 설정할 오프셋 값 (degree)
+ */
+void imu_sensor_set_pitch_offset(imu_sensor_t* sensor, float offset) {
+    sensor->data.pitch_offset = offset;
 }

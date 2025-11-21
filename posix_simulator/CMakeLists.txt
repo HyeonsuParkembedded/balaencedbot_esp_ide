@@ -45,6 +45,7 @@ add_definitions(
 set(MOCK_SOURCES
     mock_esp.c
     mock_bsw.c
+    mock_freertos.c
 )
 
 # BalanceBot logic source files (platform independent)

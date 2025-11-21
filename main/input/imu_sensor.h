@@ -51,6 +51,7 @@ typedef struct {
     float gyro_z;     ///< Z축 각속도 (deg/s)
     float pitch;      ///< 피치 각도 (degree, 전후 기울기)
     float roll;       ///< 롤 각도 (degree, 좌우 기울기)
+    float pitch_offset; ///< 피치 각도 오프셋 (캘리브레이션용)
     bool initialized; ///< 센서 초기화 상태
 } imu_data_t;
 
@@ -178,6 +179,13 @@ float imu_sensor_get_accel_z(imu_sensor_t* sensor);
  *         - false: 초기화 미완료 또는 오류
  */
 bool imu_sensor_is_initialized(imu_sensor_t* sensor);
+
+/**
+ * @brief 피치 각도 오프셋 설정 (캘리브레이션)
+ * @param sensor IMU 센서 구조체 포인터
+ * @param offset 설정할 오프셋 값 (degree)
+ */
+void imu_sensor_set_pitch_offset(imu_sensor_t* sensor, float offset);
 
 /** @} */ // IMU_SENSOR_API
 

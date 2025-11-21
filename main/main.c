@@ -52,10 +52,21 @@
 #include "input/button_driver.h"
 #include "output/rgb_led.h"
 #include "esp_timer.h"
+#include "esp_task_wdt.h" // Watchdog Timer
 
 // Pin definitions are now in config.h
 
 static const char* TAG = "BALANCE_ROBOT"; ///< ESP-IDF 로깅 태그
+
+/**
+ * @struct telemetry_data_t
+ * @brief 고속 로깅용 데이터 구조체
+ */
+typedef struct __attribute__((packed)) {
+    float angle;
+    float velocity;
+    float motor_output;
+} telemetry_data_t;
 
 /**
  * @enum robot_state_t
@@ -114,8 +125,7 @@ static SemaphoreHandle_t data_mutex = NULL; ///< 공유 데이터 보호용 뮤�
  * @brief 생성된 태스크들의 핸들
  * @{
  */
-static TaskHandle_t balance_task_handle = NULL; ///< 밸런싱 제어 태스크 핸들
-static TaskHandle_t sensor_task_handle = NULL;  ///< 센서 읽기 태스크 핸들
+static TaskHandle_t control_task_handle = NULL; ///< 통합 제어 태스크 핸들
 static TaskHandle_t status_task_handle = NULL;  ///< 상태 모니터링 태스크 핸들
 /** @} */
 
@@ -166,27 +176,16 @@ static double calculate_bearing(double lat1, double lon1, double lat2, double lo
 static void initialize_robot(void);
 
 /**
- * @brief 밸런싱 제어 태스크
+ * @brief 통합 제어 태스크 (센서 + 밸런싱)
  * @param pvParameters FreeRTOS 태스크 파라미터 (사용안함)
  * 
- * 50Hz 주기로 실행되며 다음 작업을 수행합니다:
- * - 상태 머신 업데이트
- * - PID 제어 계산
- * - 모터 제어 명령 적용
- */
-static void balance_task(void *pvParameters);
-
-/**
- * @brief 센서 데이터 수집 태스크
- * @param pvParameters FreeRTOS 태스크 파라미터 (사용안함)
- * 
- * 50Hz 주기로 실행되며 다음 작업을 수행합니다:
- * - IMU 센서 데이터 읽기
+ * 100Hz 주기로 실행되며 다음 작업을 수행합니다:
+ * - 센서 데이터 수집 (IMU, GPS, Encoder)
  * - 칼만 필터링
- * - GPS 데이터 업데이트
- * - 엔코더 속도 계산
+ * - 상태 머신 업데이트
+ * - PID 제어 및 모터 출력
  */
-static void sensor_task(void *pvParameters);
+static void control_task(void *pvParameters);
 
 /**
  * @brief 상태 모니터링 및 통신 태스크
@@ -208,6 +207,30 @@ static void status_task(void *pvParameters);
  * 모터 제어 모듈에 명령을 전달합니다.
  */
 static void update_motors(float motor_output, remote_command_t cmd);
+
+/**
+ * @brief 자이로스코프 오프셋 캘리브레이션
+ * 
+ * 로봇이 정지 상태일 때 자이로스코프의 초기 오프셋을 측정하여 설정합니다.
+ * 초기화 시 호출되어야 합니다.
+ */
+static void calibrate_gyro_offset(void) {
+    float sum_pitch = 0;
+    const int samples = 200;
+    
+    BSW_LOGI(TAG, "Calibrating Gyro... Keep robot still!");
+    
+    for(int i=0; i<samples; i++) {
+        imu_sensor_update(&imu);
+        sum_pitch += imu_sensor_get_pitch(&imu);
+        // Use vTaskDelay for delay (5ms)
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    
+    float offset = sum_pitch / samples;
+    imu_sensor_set_pitch_offset(&imu, offset);
+    BSW_LOGI(TAG, "Calibration Done. Offset: %.2f", offset);
+}
 
 /**
  * @brief 원격 제어 명령 처리
@@ -339,6 +362,11 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
     
+    // Initialize Task Watchdog Timer (TWDT)
+    // 2 seconds timeout, panic (reset) on timeout
+    esp_task_wdt_init(2, true);
+    BSW_LOGI(TAG, "Task Watchdog Timer initialized");
+
     // Initialize robot components
     initialize_robot();
 
@@ -347,8 +375,8 @@ void app_main(void) {
     BSW_LOGI(TAG, "Robot initialized successfully!");
     
     // Create tasks
-    xTaskCreate(sensor_task, "sensor_task", 4096, NULL, 5, &sensor_task_handle);
-    xTaskCreate(balance_task, "balance_task", 4096, NULL, 4, &balance_task_handle);
+    // Priority 5 (High) for control task to ensure real-time performance
+    xTaskCreate(control_task, "control_task", 8192, NULL, 5, &control_task_handle);
     xTaskCreate(status_task, "status_task", 4096, NULL, 3, &status_task_handle);
     
     BSW_LOGI(TAG, "Tasks created, starting main loop...");
@@ -534,6 +562,9 @@ static void initialize_robot(void) {
     kalman_pitch.R_measure = params ? params->kalman_r_measure : CONFIG_KALMAN_R_MEASURE;
     BSW_LOGI(TAG, "Kalman filter initialized with tuned parameters");
     
+    // Calibrate Gyroscope
+    calibrate_gyro_offset();
+    
     // Initialize motors (these are always critical)
     esp_err_t ret = motor_control_init(&left_motor, CONFIG_LEFT_MOTOR_A_PIN, CONFIG_LEFT_MOTOR_B_PIN, CONFIG_LEFT_MOTOR_EN_PIN, CONFIG_LEFT_MOTOR_CHANNEL);
     if (ret != ESP_OK) {
@@ -577,25 +608,54 @@ static void initialize_robot(void) {
 }
 
 /**
- * @brief 센서 데이터 수집 태스크
+ * @brief 통합 제어 태스크 (센서 + 밸런싱)
  * @param pvParameters FreeRTOS 태스크 파라미터 (사용안함)
  * 
  * 100Hz 주기로 실행되며 다음 작업을 수행합니다:
- * - IMU 센서 데이터 읽기 및 칼만 필터링
- * - GPS 데이터 업데이트
- * - 엔코더 속도 계산
+ * - 센서 데이터 수집 (IMU, GPS, Encoder)
+ * - 칼만 필터링
+ * - 상태 머신 업데이트
+ * - PID 제어 및 모터 출력
  */
-static void sensor_task(void *pvParameters) {
-    BSW_LOGI(TAG, "Sensor task started");
+static void control_task(void *pvParameters) {
+    BSW_LOGI(TAG, "Control task started");
     
+    // Register this task with WDT
+    esp_task_wdt_add(NULL);
+    
+    TickType_t xLastWakeTime;
+    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 10ms period (100Hz)
+    
+    // Initialize wake time
+    xLastWakeTime = xTaskGetTickCount();
+    
+    static int64_t last_time_us = 0;
+    static uint8_t telemetry_counter = 0;
+
     while (1) {
+        // 1. Ensure periodic execution (more precise than vTaskDelay)
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        
+        // Feed WDT
+        esp_task_wdt_reset();
+
+        // 2. Calculate actual dt
+        int64_t current_time_us = esp_timer_get_time();
+        if (last_time_us == 0) {
+            last_time_us = current_time_us;
+            continue;
+        }
+        float dt = (float)(current_time_us - last_time_us) / 1000000.0f;
+        last_time_us = current_time_us;
+
+        // --- Sensor Update Section ---
+        
         // IMU Update
         if (imu_sensor_update(&imu) == ESP_OK) {
              float pitch = imu_sensor_get_pitch(&imu);
              float gyro_y = imu_sensor_get_gyro_y(&imu);
              
-             // Kalman Filter Update
-             float dt = CONFIG_SENSOR_UPDATE_RATE / 1000.0f;
+             // Kalman Filter Update with actual dt
              float filtered = kalman_filter_get_angle(&kalman_pitch, pitch, gyro_y, dt);
              set_filtered_angle(filtered);
         }
@@ -607,7 +667,6 @@ static void sensor_task(void *pvParameters) {
              est_lon = gps_sensor_get_longitude(&gps);
              is_pos_initialized = true;
              
-             // Update heading if moving
              if (gps_sensor_get_speed(&gps) > 1.0f) {
                  robot_heading = gps_sensor_get_course(&gps);
              }
@@ -627,7 +686,7 @@ static void sensor_task(void *pvParameters) {
         right_speed = encoder_sensor_get_speed(&right_encoder);
 #endif
         
-        // Calculate robot velocity (average of enabled encoders)
+        // Calculate robot velocity
 #if defined(CONFIG_ENABLE_LEFT_ENCODER) && defined(CONFIG_ENABLE_RIGHT_ENCODER)
         set_robot_velocity((left_speed + right_speed) / 2.0f);
 #elif defined(CONFIG_ENABLE_LEFT_ENCODER)
@@ -637,31 +696,9 @@ static void sensor_task(void *pvParameters) {
 #else
         set_robot_velocity(0.0f);
 #endif
-        
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_SENSOR_UPDATE_RATE));
-    }
-}
 
-/**
- * @brief 밸런싱 제어 태스크
- * @param pvParameters FreeRTOS 태스크 파라미터 (사용안함)
- * 
- * 100Hz 주기로 실행되며 다음 작업을 수행합니다:
- * - 상태 머신 업데이트 및 상태 전환 처리
- * - 현재 상태에 따른 제어 로직 실행
- * - PID 제어 계산 (밸런싱 상태에서)
- * - 모터 제어 명령 적용
- * 
- * 상태별 동작:
- * - IDLE: 모터 정지, PID 리셋
- * - BALANCING: PID 제어 기반 밸런싱
- * - STANDING_UP: 모터 정지, 서보 동작
- * - FALLEN/ERROR: 비상 정지
- */
-static void balance_task(void *pvParameters) {
-    BSW_LOGI(TAG, "Balance task started");
+        // --- Control Logic Section ---
 
-    while (1) {
         // Button Event Handling
         button_event_t evt = button_get_event(&mode_btn);
         if (evt == BUTTON_EVENT_CLICK) {
@@ -677,100 +714,74 @@ static void balance_task(void *pvParameters) {
             }
         }
 
-        // 기립 완료 후 LED 복구
+        // Standup completion check
         if (servo_standup_is_complete(&servo_standup) && get_robot_state() == ROBOT_STATE_STANDING_UP) {
-            set_robot_state(ROBOT_STATE_BALANCING); // 기립 완료 후 밸런싱 모드로 전환
+            set_robot_state(ROBOT_STATE_BALANCING);
             rgb_led_set_color(robot_mode == MODE_REMOTE_CONTROL ? LED_COLOR_BLUE : LED_COLOR_GREEN);
         }
 
-        // Update state machine first
+        // State Machine Update
         state_machine_update();
 
         remote_command_t cmd = ble_controller_get_command(&ble_controller);
         robot_state_t state = get_robot_state();
+        float current_motor_output = 0.0f;
 
-        // Handle different robot states
         switch (state) {
         case ROBOT_STATE_IDLE:
-            // Stop motors and reset PID
             motor_control_stop(&left_motor);
             motor_control_stop(&right_motor);
             balance_pid_reset(&balance_pid);
             break;
 
         case ROBOT_STATE_BALANCING: {
-            // Balance using dual-loop PID (angle + velocity control)
-            // Compute balance control (dt = 20ms = 0.02s for 50Hz update rate)
-            float dt = CONFIG_BALANCE_UPDATE_RATE / 1000.0f;
-            
-            // Get current sensor values
             float current_angle = get_filtered_angle();
             float current_velocity = get_robot_velocity();
-            
-            // Get angular velocity from IMU
-            if (imu_sensor_update(&imu) == ESP_OK) {
-                float gyro_rate = imu_sensor_get_gyro_y(&imu);  // Pitch angular velocity
-                
-                // Determine control inputs based on mode
-                float target_speed = 0.0f;
-                float target_turn = 0.0f;
+            float gyro_rate = imu_sensor_get_gyro_y(&imu); // Already updated above
 
-                if (robot_mode == MODE_REMOTE_CONTROL) {
-                    target_speed = cmd.direction * 10.0f; // Scale command
-                    target_turn = cmd.turn * 0.5f;        // Scale turn
-                } else if (robot_mode == MODE_GPS_FOLLOWING) {
-                    // Autonomous Navigation Logic
-                    if (is_pos_initialized && (target_lat != 0.0 || target_lon != 0.0)) {
-                        double dist = calculate_distance(est_lat, est_lon, target_lat, target_lon);
-                        double bearing = calculate_bearing(est_lat, est_lon, target_lat, target_lon);
-                        float heading_error = normalize_angle(bearing - robot_heading);
+            float target_speed = 0.0f;
+            float target_turn = 0.0f;
 
-                        if (dist < 2.0) { // Arrived (within 2 meters)
-                            rgb_led_set_color(LED_COLOR_YELLOW); // Arrived indicator
-                            target_speed = 0.0f;
-                            target_turn = 0.0f;
+            if (robot_mode == MODE_REMOTE_CONTROL) {
+                target_speed = cmd.direction * 10.0f;
+                target_turn = cmd.turn * 0.5f;
+            } else if (robot_mode == MODE_GPS_FOLLOWING) {
+                if (is_pos_initialized && (target_lat != 0.0 || target_lon != 0.0)) {
+                    double dist = calculate_distance(est_lat, est_lon, target_lat, target_lon);
+                    double bearing = calculate_bearing(est_lat, est_lon, target_lat, target_lon);
+                    float heading_error = normalize_angle(bearing - robot_heading);
+
+                    if (dist < 2.0) {
+                        rgb_led_set_color(LED_COLOR_YELLOW);
+                        target_speed = 0.0f;
+                        target_turn = 0.0f;
+                    } else {
+                        target_turn = heading_error * 2.0f; 
+                        if (target_turn > 30.0f) target_turn = 30.0f;
+                        if (target_turn < -30.0f) target_turn = -30.0f;
+
+                        if (fabs(heading_error) < 45.0f) {
+                            target_speed = 15.0f;
                         } else {
-                            // Simple P-controller for turning
-                            target_turn = heading_error * 2.0f; 
-                            if (target_turn > 30.0f) target_turn = 30.0f;
-                            if (target_turn < -30.0f) target_turn = -30.0f;
-
-                            // Move forward if roughly aligned
-                            if (fabs(heading_error) < 45.0f) {
-                                target_speed = 15.0f; // Constant speed 15 cm/s
-                            } else {
-                                target_speed = 0.0f; // Turn in place
-                            }
+                            target_speed = 0.0f;
                         }
                     }
                 }
-                
-                // Set target velocity
-                balance_pid_set_target_velocity(&balance_pid, target_speed);
-                
-                // Compute dual-loop balance control output
-                float motor_output = balance_pid_compute_balance(&balance_pid, current_angle, gyro_rate, current_velocity, dt);
-                
-                // Apply motor commands with turning
-                // update_motors expects motor_output and a command struct. 
-                // We need to adapt update_motors or manually calculate left/right PWM.
-                // Let's modify update_motors to take turn value directly or construct a temp cmd.
-                remote_command_t temp_cmd = {0};
-                temp_cmd.turn = (int8_t)target_turn; 
-                // Note: update_motors uses cmd.turn directly. We need to ensure scaling matches.
-                
-                update_motors(motor_output, temp_cmd);
-
-            } else {
-                // Fallback: stop motors if sensor fails
-                motor_control_stop(&left_motor);
-                motor_control_stop(&right_motor);
             }
+            
+            balance_pid_set_target_velocity(&balance_pid, target_speed);
+            
+            // Compute dual-loop balance control output with ACTUAL dt
+            float motor_output = balance_pid_compute_balance(&balance_pid, current_angle, gyro_rate, current_velocity, dt);
+            current_motor_output = motor_output;
+            
+            remote_command_t temp_cmd = {0};
+            temp_cmd.turn = (int8_t)target_turn; 
+            update_motors(motor_output, temp_cmd);
             break;
         }
 
         case ROBOT_STATE_STANDING_UP:
-            // Motors stopped during standup
             motor_control_stop(&left_motor);
             motor_control_stop(&right_motor);
             balance_pid_reset(&balance_pid);
@@ -779,14 +790,23 @@ static void balance_task(void *pvParameters) {
         case ROBOT_STATE_FALLEN:
         case ROBOT_STATE_ERROR:
         default:
-            // Emergency stop
             motor_control_stop(&left_motor);
             motor_control_stop(&right_motor);
             balance_pid_reset(&balance_pid);
             break;
         }
-        
-        vTaskDelay(pdMS_TO_TICKS(10)); // 100Hz control loop
+
+        // Telemetry (20Hz = 100Hz / 5)
+        if (++telemetry_counter >= 5) {
+            telemetry_counter = 0;
+            if (ble_controller_is_connected(&ble_controller)) {
+                telemetry_data_t data;
+                data.angle = get_filtered_angle();
+                data.velocity = get_robot_velocity();
+                data.motor_output = current_motor_output;
+                ble_controller_send_raw(&ble_controller, (uint8_t*)&data, sizeof(data));
+            }
+        }
     }
 }
 
@@ -882,15 +902,12 @@ static void update_motors(float motor_output, remote_command_t cmd) {
     float left_motor_speed = motor_output - turn_adjustment;
     float right_motor_speed = motor_output + turn_adjustment;
     
-    // Constrain motor speeds
-    if (left_motor_speed > 255.0f) left_motor_speed = 255.0f;
-    if (left_motor_speed < -255.0f) left_motor_speed = -255.0f;
-    if (right_motor_speed > 255.0f) right_motor_speed = 255.0f;
-    if (right_motor_speed < -255.0f) right_motor_speed = -255.0f;
-    
-    // Apply to motors
-    motor_control_set_speed(&left_motor, (int)left_motor_speed);
-    motor_control_set_speed(&right_motor, (int)right_motor_speed);
+    // Get current battery voltage for compensation
+    float battery_voltage = battery_sensor_read_voltage(&battery_sensor);
+
+    // Apply to motors with voltage compensation
+    motor_control_set_speed_compensated(&left_motor, (int)left_motor_speed, battery_voltage);
+    motor_control_set_speed_compensated(&right_motor, (int)right_motor_speed, battery_voltage);
 }
 
 /**

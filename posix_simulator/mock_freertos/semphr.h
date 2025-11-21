@@ -7,9 +7,9 @@
 extern "C" {
 #endif
 
-#define xSemaphoreCreateMutex() (SemaphoreHandle_t)1
-#define xSemaphoreTake(xSemaphore, xBlockTime) pdTRUE
-#define xSemaphoreGive(xSemaphore) pdTRUE
+SemaphoreHandle_t xSemaphoreCreateMutex(void);
+BaseType_t xSemaphoreTake(SemaphoreHandle_t xSemaphore, TickType_t xBlockTime);
+BaseType_t xSemaphoreGive(SemaphoreHandle_t xSemaphore);
 
 #ifdef __cplusplus
 }

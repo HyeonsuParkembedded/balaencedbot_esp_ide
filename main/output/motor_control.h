@@ -31,6 +31,7 @@ typedef struct {
     bsw_gpio_num_t motor_pin_b;      ///< 모터 제어 핀 B (방향 제어)
     bsw_gpio_num_t enable_pin;       ///< PWM Enable 핀 (속도 제어)
     pwm_channel_t enable_channel; ///< PWM 채널
+    int current_speed;            ///< 현재 모터 속도 (Soft Start용)
 } motor_control_t;
 
 /**
@@ -75,6 +76,18 @@ void motor_control_set_speed(motor_control_t* motor, int speed);
  * @param motor 모터 제어 구조체 포인터
  */
 void motor_control_stop(motor_control_t* motor);
+
+/**
+ * @brief 전압 보상 모터 속도 설정
+ * 
+ * 배터리 전압 변동에 따라 모터 속도(PWM 듀티)를 보정하여 설정합니다.
+ * 전압이 낮아지면 듀티를 높여 일정한 출력을 유지합니다.
+ * 
+ * @param motor 모터 제어 구조체 포인터
+ * @param speed 목표 속도 (-255 ~ +255)
+ * @param current_voltage 현재 배터리 전압 (V)
+ */
+void motor_control_set_speed_compensated(motor_control_t* motor, int speed, float current_voltage);
 
 #ifdef __cplusplus
 }

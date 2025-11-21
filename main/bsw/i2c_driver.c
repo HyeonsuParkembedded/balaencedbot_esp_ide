@@ -106,19 +106,20 @@ static inline uint32_t i2c_get_base_addr(bsw_i2c_port_t port) {
  * @return esp_err_t ESP_OK or ESP_ERR_TIMEOUT
  */
 static esp_err_t i2c_wait_trans_complete(uint32_t base, uint32_t timeout_ms) {
-    TickType_t start_tick = xTaskGetTickCount();
-    
+    int64_t start_time = esp_timer_get_time(); // Start time (microseconds)
+    int64_t timeout_us = timeout_ms * 1000;
+
     while (1) {
         uint32_t int_status = I2C_READ_REG(base, I2C_INT_RAW_REG_OFFSET);
         
-        // Check for transaction complete
+        // 1. Check for transaction complete
         if (int_status & I2C_INT_TRANS_COMPLETE_BIT) {
             // Clear interrupt
             I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, I2C_INT_TRANS_COMPLETE_BIT);
             return ESP_OK;
         }
         
-        // Check for errors
+        // 2. Check for errors (NACK, Timeout, Arbitration Lost)
         if (int_status & (I2C_INT_NACK_BIT | I2C_INT_TIME_OUT_BIT | I2C_INT_ARBITRATION_LOST_BIT)) {
             // Clear all interrupts
             I2C_WRITE_REG(base, I2C_INT_CLR_REG_OFFSET, 0xFFFFFFFF);
@@ -126,15 +127,14 @@ static esp_err_t i2c_wait_trans_complete(uint32_t base, uint32_t timeout_ms) {
             return ESP_FAIL;
         }
         
-        // Check timeout
-        TickType_t elapsed_ticks = xTaskGetTickCount() - start_tick;
-        if (pdTICKS_TO_MS(elapsed_ticks) >= timeout_ms) {
-            BSW_LOGE(I2C_TAG, "I2C transaction timeout after %lu ms", pdTICKS_TO_MS(elapsed_ticks));
+        // 3. Check timeout
+        if ((esp_timer_get_time() - start_time) > timeout_us) {
+            BSW_LOGE(I2C_TAG, "I2C transaction timeout");
             return ESP_ERR_TIMEOUT;
         }
         
-        // Yield CPU to other tasks (FreeRTOS-safe)
-        vTaskDelay(1);
+        // Busy-wait: Do not yield CPU to ensure fast response for short I2C transactions
+        // esp_rom_delay_us(1); // Optional: very short delay if needed
     }
 }
 

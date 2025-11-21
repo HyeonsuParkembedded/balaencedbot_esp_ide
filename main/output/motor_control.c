@@ -39,6 +39,7 @@ esp_err_t motor_control_init(motor_control_t* motor,
     motor->motor_pin_b = pin_b;
     motor->enable_pin = enable_pin;
     motor->enable_channel = enable_ch;
+    motor->current_speed = 0; // Initialize current speed
 
     // PWM 드라이버 초기화
     esp_err_t ret = pwm_driver_init();
@@ -92,6 +93,9 @@ void motor_control_set_speed(motor_control_t* motor, int speed) {
     if (speed > 255) speed = 255;
     if (speed < -255) speed = -255;
 
+    // Update current speed state
+    motor->current_speed = speed;
+
     // 데드존 보정
     if (speed > 0) {
         speed += MOTOR_DEADZONE;
@@ -134,4 +138,49 @@ void motor_control_set_speed(motor_control_t* motor, int speed) {
  */
 void motor_control_stop(motor_control_t* motor) {
     motor_control_set_speed(motor, 0);
+}
+
+/**
+ * @brief 전압 보상 모터 속도 설정 구현
+ * 
+ * 현재 배터리 전압을 기반으로 PWM 듀티를 보정하여 모터 속도를 설정합니다.
+ * 기준 전압(12V) 대비 현재 전압 비율로 속도 명령을 스케일링합니다.
+ * 
+ * @param motor 모터 제어 구조체 포인터
+ * @param speed 목표 속도 (-255 ~ +255)
+ * @param current_voltage 현재 배터리 전압 (V)
+ */
+void motor_control_set_speed_compensated(motor_control_t* motor, int speed, float current_voltage) {
+    const float NOMINAL_VOLTAGE = 12.0f; // 기준 전압 (12V)
+    int target_speed = speed;
+    
+    // 전압이 너무 낮으면 보상하지 않음 (0으로 나눔 방지 및 배터리 보호)
+    if (current_voltage >= 6.0f) {
+        // 전압이 낮을수록 듀티를 더 높여서 보상
+        float voltage_factor = NOMINAL_VOLTAGE / current_voltage;
+        target_speed = (int)(speed * voltage_factor);
+    }
+    
+    // 255 제한 (Clamp)
+    if (target_speed > 255) target_speed = 255;
+    if (target_speed < -255) target_speed = -255;
+    
+    // Soft Start Logic
+    // 급격한 가속/감속 방지 (기어 박스 보호 및 전류 스파이크 감소)
+    // 밸런싱 로봇 특성상 반응성이 중요하므로 너무 느리게 설정하면 안됨
+    // 25 per 10ms -> 0 to 255 in ~100ms
+    const int MAX_CHANGE = 25; 
+    
+    int diff = target_speed - motor->current_speed;
+    int next_speed = target_speed;
+
+    if (abs(diff) > MAX_CHANGE) {
+        if (diff > 0) {
+            next_speed = motor->current_speed + MAX_CHANGE;
+        } else {
+            next_speed = motor->current_speed - MAX_CHANGE;
+        }
+    }
+    
+    motor_control_set_speed(motor, next_speed);
 }
