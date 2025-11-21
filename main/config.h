@@ -50,6 +50,7 @@ extern "C" {
 #define CONFIG_MPU6050_SDA_PIN          GPIO_NUM_6   ///< LP_I2C_SDA
 #define CONFIG_MPU6050_SCL_PIN          GPIO_NUM_7   ///< LP_I2C_SCL
 #define CONFIG_MPU6050_I2C_PORT         I2C_NUM_0    ///< I2C 포트 번호
+#define CONFIG_I2C_MASTER_CLOCK_HZ      400000       ///< I2C 버스 속도 (400kHz Fast Mode)
 /** @} */
 
 /**
@@ -61,6 +62,7 @@ extern "C" {
 #define CONFIG_GPS_TX_PIN               GPIO_NUM_5   ///< LP_UART_TXD
 #define CONFIG_GPS_UART_PORT            UART_NUM_1   ///< 디버깅과 분리를 위해 UART1 사용
 #define CONFIG_GPS_BAUDRATE             9600         ///< GPS 통신 속도 (bps)
+#define CONFIG_GPS_HEADING_MIN_SPEED_MS 0.15f        ///< GPS 헤딩 업데이트 최소 속도 (m/s)
 /** @} */
 
 /**
@@ -129,6 +131,8 @@ extern "C" {
 #define CONFIG_BATTERY_MIN_VOLTAGE      6.0f         ///< 배터리 최소 전압 (V) - 2S 리튬 방전 컷오프
 #define CONFIG_BATTERY_LOW_THRESHOLD    6.8f         ///< 저전압 경고 임계값 (V)
 #define CONFIG_BATTERY_CRITICAL_THRESHOLD 6.4f       ///< 위험 전압 임계값 (V)
+#define CONFIG_BATTERY_VOLTAGE_LPF_ALPHA 0.1f        ///< 배터리 전압 저역통과 필터 알파 값 (0~1)
+#define CONFIG_BATTERY_COMPENSATION_MAX_GAIN 1.5f    ///< 전압 보상 최대 배율 제한
 /** @} */
 
 /**
@@ -138,6 +142,7 @@ extern "C" {
  */
 #define CONFIG_ENCODER_PPR              1320         ///< 엔코더 펄스 수 (Pulse Per Revolution)
 #define CONFIG_WHEEL_DIAMETER_CM        6.5f         ///< 바퀴 지름 (cm)
+#define CONFIG_MOTOR_DEADZONE           35           ///< 모터 데드존 (PWM) - 실험을 통해 튜닝 필요
 /** @} */
 
 /**
@@ -203,6 +208,15 @@ extern "C" {
  */
 #define CONFIG_SERVO_EXTENDED_ANGLE     90           ///< 서보 확장 각도 (degree)
 #define CONFIG_SERVO_RETRACTED_ANGLE    0            ///< 서보 수축 각도 (degree)
+/** @} */
+
+/**
+ * @defgroup SAFETY_CONFIG 안전 및 페일세이프 설정
+ * @brief 센서 오류 및 캘리브레이션 관련 설정
+ * @{ 
+ */
+#define CONFIG_IMU_MAX_CONSECUTIVE_FAILURES 5        ///< IMU 연속 오류 허용 횟수
+#define CONFIG_PITCH_CALIBRATION_SAMPLES    400      ///< 수평 캘리브레이션 샘플 수
 /** @} */
 
 /** @} */ // CONTROL_CONFIG

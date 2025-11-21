@@ -106,6 +106,8 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_nu
     sensor->data.initialized = true;
 
     BSW_LOGI(IMU_TAG, "IMU sensor initialized successfully");
+
+    return ESP_OK;
 }
 
 /**

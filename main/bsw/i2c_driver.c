@@ -32,6 +32,7 @@
 #include "i2c_driver.h"
 #include "system_services.h"
 #include "gpio_driver.h"
+#include "../config.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_rom_gpio.h"
@@ -44,6 +45,10 @@
 #include <string.h>
 
 static const char* I2C_TAG = "HW_I2C";
+
+#ifndef CONFIG_I2C_MASTER_CLOCK_HZ
+#define CONFIG_I2C_MASTER_CLOCK_HZ I2C_DEFAULT_CLOCK_SPEED
+#endif
 
 // I2C Hardware Controller Base Addresses
 // ESP32-C6 only has I2C0, I2C1 does not exist
@@ -288,7 +293,7 @@ esp_err_t i2c_driver_init(bsw_i2c_port_t port, bsw_gpio_num_t sda_pin, bsw_gpio_
     i2c_hw_config_t config = {
         .sda_pin = sda_pin,
         .scl_pin = scl_pin,
-        .clock_speed = I2C_DEFAULT_CLOCK_SPEED,
+        .clock_speed = CONFIG_I2C_MASTER_CLOCK_HZ,
         .use_pullup = true,
         .timeout_ms = I2C_DEFAULT_TIMEOUT_MS
     };

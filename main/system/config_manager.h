@@ -37,6 +37,7 @@ extern "C" {
 #define CONFIG_KEY_KALMAN_R_MEASURE "kal_r_meas"    ///< 칼만 측정 노이즈
 #define CONFIG_KEY_MAX_TILT_ANGLE   "max_tilt"      ///< 최대 기울기 각도
 #define CONFIG_KEY_FALLEN_THRESHOLD "fall_thresh"   ///< 넘어짐 판정 임계값
+#define CONFIG_KEY_PITCH_OFFSET     "pitch_ofs"     ///< IMU 피치 오프셋 저장 키
 /** @} */
 
 /**
@@ -60,6 +61,7 @@ typedef struct {
     // 제어 파라미터
     float max_tilt_angle;       ///< 최대 허용 기울기 각도
     float fallen_threshold;     ///< 넘어짐 판정 임계값
+    float pitch_offset_deg;     ///< 수동 캘리브레이션된 피치 오프셋
 } tuning_params_t;
 
 /**
@@ -78,6 +80,7 @@ typedef enum {
     CONFIG_PARAM_KALMAN_R_MEASURE,
     CONFIG_PARAM_MAX_TILT_ANGLE,
     CONFIG_PARAM_FALLEN_THRESHOLD,
+    CONFIG_PARAM_PITCH_OFFSET,
     CONFIG_PARAM_COUNT  ///< 총 파라미터 개수
 } config_param_id_t;
 

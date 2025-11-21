@@ -11,6 +11,7 @@
  */
 
 #include "pid_controller.h"
+#include "../config.h"
 #include <string.h>
 
 /**
@@ -89,7 +90,7 @@ void pid_controller_set_output_limits(pid_controller_t* pid, float min, float ma
 
 float pid_controller_compute(pid_controller_t* pid, float input, float dt) {
     if (pid->first_run) {
-        pid->previous_error = pid->setpoint - input;
+    pid->previous_error = input - pid->setpoint;
         pid->first_run = false;
         printf("[PID_DEBUG] First Run! Setpoint=%.2f, Input=%.2f, Output=0\n", pid->setpoint, input);
         return 0.0f; // 첫 실행 시 미분 킥 방지
@@ -97,7 +98,7 @@ float pid_controller_compute(pid_controller_t* pid, float input, float dt) {
 
     if (dt <= 0.0f) return pid->output; // 잘못된 시간 간격 처리
     
-    float error = pid->setpoint - input;
+    float error = input - pid->setpoint;
     
     // 적분 계산 및 와인드업 방지
     pid->integral += error * dt;
@@ -149,14 +150,14 @@ void pid_controller_reset(pid_controller_t* pid) {
  * 각도 PID는 밸런싱용, 속도 PID는 이동 제어용으로 사용됩니다.
  */
 void balance_pid_init(balance_pid_t* balance_pid) {
-    pid_controller_init(&balance_pid->pitch_pid, 50.0f, 0.0f, 2.0f);     // 각도 제어용
+    pid_controller_init(&balance_pid->pitch_pid, CONFIG_BALANCE_PID_KP, CONFIG_BALANCE_PID_KI, CONFIG_BALANCE_PID_KD);     // 각도 제어용
     pid_controller_init(&balance_pid->velocity_pid, 1.0f, 0.1f, 0.0f); // 속도 제어용
     
     balance_pid->target_velocity = 0.0f;  // 정지 상태로 시작
     balance_pid->max_tilt_angle = 45.0f;  // 안전 각도 제한
     
     // 출력 제한 설정
-    pid_controller_set_output_limits(&balance_pid->pitch_pid, -255.0f, 255.0f);   // 모터 출력 범위
+    pid_controller_set_output_limits(&balance_pid->pitch_pid, CONFIG_PID_OUTPUT_MIN, CONFIG_PID_OUTPUT_MAX);   // 모터 출력 범위
     pid_controller_set_output_limits(&balance_pid->velocity_pid, -10.0f, 10.0f);  // 각도 조정 범위
 }
 

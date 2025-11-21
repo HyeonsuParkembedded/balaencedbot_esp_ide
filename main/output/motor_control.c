@@ -10,6 +10,9 @@
  * @version 1.0
  */
 
+#include <stdbool.h>
+#include <stdlib.h>
+
 #include "motor_control.h"
 #include "../bsw/pwm_driver.h"
 #include "../bsw/gpio_driver.h"
@@ -17,6 +20,7 @@
 #include "../config.h" // For CONFIG_MOTOR_STBY_PIN
 
 static const char* MOTOR_TAG = "MOTOR_CONTROL";  ///< 로깅 태그
+static bool s_direction_hint_logged = false;
 
 /**
  * @brief 모터 제어 초기화 구현
@@ -86,8 +90,6 @@ esp_err_t motor_control_init(motor_control_t* motor,
  * @param motor 모터 제어 구조체 포인터
  * @param speed 모터 속도 (-255 ~ +255)
  */
-#define MOTOR_DEADZONE 35
-
 void motor_control_set_speed(motor_control_t* motor, int speed) {
     // 속도 범위 제한
     if (speed > 255) speed = 255;
@@ -96,18 +98,28 @@ void motor_control_set_speed(motor_control_t* motor, int speed) {
     // Update current speed state
     motor->current_speed = speed;
 
-    // 데드존 보정
-    if (speed > 0) {
-        speed += MOTOR_DEADZONE;
-        if (speed > 255) speed = 255;
-    } else if (speed < 0) {
-        speed -= MOTOR_DEADZONE;
-        if (speed < -255) speed = -255;
+    const int deadzone = CONFIG_MOTOR_DEADZONE;
+
+    if (deadzone > 0) {
+        if (speed > 0) {
+            speed += deadzone;
+            if (speed > 255) speed = 255;
+        } else if (speed < 0) {
+            speed -= deadzone;
+            if (speed < -255) speed = -255;
+        }
     }
 
     // 입력(255) -> PWM(1000) 스케일링
     int abs_speed = (speed > 0) ? speed : -speed;
     uint32_t pwm_duty = (abs_speed * 1000) / 255;
+
+    if (!s_direction_hint_logged && abs_speed >= 100) {
+        BSW_LOGI(MOTOR_TAG,
+                 "Direction check: speed=%d -> pinA=%d HIGH / pinB=%d LOW for forward motion. Hold the robot and confirm wheel direction.",
+                 speed, motor->motor_pin_a, motor->motor_pin_b);
+        s_direction_hint_logged = true;
+    }
 
     if (speed > 0) {
         // 전진: A=HIGH, B=LOW
@@ -153,11 +165,23 @@ void motor_control_stop(motor_control_t* motor) {
 void motor_control_set_speed_compensated(motor_control_t* motor, int speed, float current_voltage) {
     const float NOMINAL_VOLTAGE = 12.0f; // 기준 전압 (12V)
     int target_speed = speed;
+
+    if (current_voltage > 0.0f && current_voltage <= CONFIG_BATTERY_CRITICAL_THRESHOLD) {
+        BSW_LOGW(MOTOR_TAG, "Battery %.2fV below cutoff %.2fV. Motor disabled.",
+                 current_voltage, CONFIG_BATTERY_CRITICAL_THRESHOLD);
+        motor_control_stop(motor);
+        return;
+    }
     
     // 전압이 너무 낮으면 보상하지 않음 (0으로 나눔 방지 및 배터리 보호)
     if (current_voltage >= 6.0f) {
         // 전압이 낮을수록 듀티를 더 높여서 보상
         float voltage_factor = NOMINAL_VOLTAGE / current_voltage;
+        if (voltage_factor < 1.0f) {
+            voltage_factor = 1.0f;
+        } else if (voltage_factor > CONFIG_BATTERY_COMPENSATION_MAX_GAIN) {
+            voltage_factor = CONFIG_BATTERY_COMPENSATION_MAX_GAIN;
+        }
         target_speed = (int)(speed * voltage_factor);
     }
     
@@ -165,22 +189,5 @@ void motor_control_set_speed_compensated(motor_control_t* motor, int speed, floa
     if (target_speed > 255) target_speed = 255;
     if (target_speed < -255) target_speed = -255;
     
-    // Soft Start Logic
-    // 급격한 가속/감속 방지 (기어 박스 보호 및 전류 스파이크 감소)
-    // 밸런싱 로봇 특성상 반응성이 중요하므로 너무 느리게 설정하면 안됨
-    // 25 per 10ms -> 0 to 255 in ~100ms
-    const int MAX_CHANGE = 25; 
-    
-    int diff = target_speed - motor->current_speed;
-    int next_speed = target_speed;
-
-    if (abs(diff) > MAX_CHANGE) {
-        if (diff > 0) {
-            next_speed = motor->current_speed + MAX_CHANGE;
-        } else {
-            next_speed = motor->current_speed - MAX_CHANGE;
-        }
-    }
-    
-    motor_control_set_speed(motor, next_speed);
+    motor_control_set_speed(motor, target_speed);
 }

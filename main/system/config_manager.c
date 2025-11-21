@@ -38,7 +38,8 @@ static const char* param_names[CONFIG_PARAM_COUNT] = {
     "Kalman_Q_Bias",
     "Kalman_R_Measure",
     "Max_Tilt_Angle",
-    "Fallen_Threshold"
+    "Fallen_Threshold",
+    "Pitch_Offset_Deg"
 };
 
 // NVS 키 배열
@@ -53,7 +54,8 @@ static const char* nvs_keys[CONFIG_PARAM_COUNT] = {
     CONFIG_KEY_KALMAN_Q_BIAS,
     CONFIG_KEY_KALMAN_R_MEASURE,
     CONFIG_KEY_MAX_TILT_ANGLE,
-    CONFIG_KEY_FALLEN_THRESHOLD
+    CONFIG_KEY_FALLEN_THRESHOLD,
+    CONFIG_KEY_PITCH_OFFSET
 };
 
 /**
@@ -72,6 +74,7 @@ static void set_default_params(void) {
     current_params.kalman_r_measure = CONFIG_KALMAN_R_MEASURE;
     current_params.max_tilt_angle = CONFIG_FALLEN_ANGLE_THRESHOLD;
     current_params.fallen_threshold = CONFIG_FALLEN_ANGLE_THRESHOLD;
+    current_params.pitch_offset_deg = 0.0f;
 }
 
 /**
@@ -90,6 +93,7 @@ static float* get_param_ptr(config_param_id_t param_id) {
         case CONFIG_PARAM_KALMAN_R_MEASURE: return &current_params.kalman_r_measure;
         case CONFIG_PARAM_MAX_TILT_ANGLE:   return &current_params.max_tilt_angle;
         case CONFIG_PARAM_FALLEN_THRESHOLD: return &current_params.fallen_threshold;
+        case CONFIG_PARAM_PITCH_OFFSET:     return &current_params.pitch_offset_deg;
         default: return NULL;
     }
 }
@@ -344,11 +348,11 @@ esp_err_t config_manager_get_status_string(char* buffer, size_t buffer_size) {
     
     int len = snprintf(buffer, buffer_size,
         "PID:Bal[%.2f,%.3f,%.2f] Vel[%.2f,%.3f,%.2f] "
-        "Kalman:[%.3f,%.3f,%.3f] Tilt:%.1f Fall:%.1f",
+        "Kalman:[%.3f,%.3f,%.3f] Tilt:%.1f Fall:%.1f PitchOfs:%.2f",
         current_params.balance_kp, current_params.balance_ki, current_params.balance_kd,
         current_params.velocity_kp, current_params.velocity_ki, current_params.velocity_kd,
         current_params.kalman_q_angle, current_params.kalman_q_bias, current_params.kalman_r_measure,
-        current_params.max_tilt_angle, current_params.fallen_threshold
+        current_params.max_tilt_angle, current_params.fallen_threshold, current_params.pitch_offset_deg
     );
     
     return (len > 0 && len < buffer_size) ? ESP_OK : ESP_ERR_INVALID_SIZE;

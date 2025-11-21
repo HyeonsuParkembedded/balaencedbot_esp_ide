@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -207,6 +208,12 @@ static void status_task(void *pvParameters);
  * 모터 제어 모듈에 명령을 전달합니다.
  */
 static void update_motors(float motor_output, remote_command_t cmd);
+static void apply_stored_pitch_offset(const tuning_params_t* params);
+static void enter_imu_error_state(const char* reason);
+static void verify_control_polarity(float pitch, float motor_output);
+static void imu_pitch_polarity_probe(float pitch);
+static void set_filtered_angle(float angle);
+static void set_robot_state(robot_state_t new_state);
 
 /**
  * @brief 자이로스코프 오프셋 캘리브레이션
@@ -214,22 +221,42 @@ static void update_motors(float motor_output, remote_command_t cmd);
  * 로봇이 정지 상태일 때 자이로스코프의 초기 오프셋을 측정하여 설정합니다.
  * 초기화 시 호출되어야 합니다.
  */
-static void calibrate_gyro_offset(void) {
-    float sum_pitch = 0;
-    const int samples = 200;
-    
-    BSW_LOGI(TAG, "Calibrating Gyro... Keep robot still!");
-    
-    for(int i=0; i<samples; i++) {
-        imu_sensor_update(&imu);
+static esp_err_t calibrate_pitch_offset_and_store(void) {
+    if (!imu_sensor_is_initialized(&imu)) {
+        BSW_LOGE(TAG, "Cannot calibrate pitch offset: IMU not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    BSW_LOGI(TAG, "Pitch calibration started. Keep the robot perfectly upright and still for a few seconds...");
+
+    set_robot_state(ROBOT_STATE_IDLE);
+    motor_control_stop(&left_motor);
+    motor_control_stop(&right_motor);
+    balance_pid_reset(&balance_pid);
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    float sum_pitch = 0.0f;
+    for (int i = 0; i < CONFIG_PITCH_CALIBRATION_SAMPLES; i++) {
+        esp_err_t ret = imu_sensor_update(&imu);
+        if (ret != ESP_OK) {
+            BSW_LOGE(TAG, "IMU read failed during calibration (%d)", ret);
+            return ret;
+        }
         sum_pitch += imu_sensor_get_pitch(&imu);
-        // Use vTaskDelay for delay (5ms)
         vTaskDelay(pdMS_TO_TICKS(5));
     }
-    
-    float offset = sum_pitch / samples;
+
+    float offset = sum_pitch / CONFIG_PITCH_CALIBRATION_SAMPLES;
     imu_sensor_set_pitch_offset(&imu, offset);
-    BSW_LOGI(TAG, "Calibration Done. Offset: %.2f", offset);
+    set_filtered_angle(0.0f);
+
+    esp_err_t store_ret = config_manager_set_param(CONFIG_PARAM_PITCH_OFFSET, offset, true);
+    if (store_ret != ESP_OK) {
+        BSW_LOGW(TAG, "Failed to persist pitch offset (err=%d)", store_ret);
+    }
+
+    BSW_LOGI(TAG, "Pitch calibration complete. Stored offset: %.2f°", offset);
+    return ESP_OK;
 }
 
 /**
@@ -363,8 +390,11 @@ void app_main(void) {
     ESP_ERROR_CHECK(ret);
     
     // Initialize Task Watchdog Timer (TWDT)
-    // 2 seconds timeout, panic (reset) on timeout
-    esp_task_wdt_init(2, true);
+    const esp_task_wdt_config_t wdt_config = {
+        .timeout_ms = 2000,
+        .trigger_panic = true,
+    };
+    ESP_ERROR_CHECK(esp_task_wdt_init(&wdt_config));
     BSW_LOGI(TAG, "Task Watchdog Timer initialized");
 
     // Initialize robot components
@@ -562,8 +592,7 @@ static void initialize_robot(void) {
     kalman_pitch.R_measure = params ? params->kalman_r_measure : CONFIG_KALMAN_R_MEASURE;
     BSW_LOGI(TAG, "Kalman filter initialized with tuned parameters");
     
-    // Calibrate Gyroscope
-    calibrate_gyro_offset();
+    apply_stored_pitch_offset(params);
     
     // Initialize motors (these are always critical)
     esp_err_t ret = motor_control_init(&left_motor, CONFIG_LEFT_MOTOR_A_PIN, CONFIG_LEFT_MOTOR_B_PIN, CONFIG_LEFT_MOTOR_EN_PIN, CONFIG_LEFT_MOTOR_CHANNEL);
@@ -631,6 +660,7 @@ static void control_task(void *pvParameters) {
     
     static int64_t last_time_us = 0;
     static uint8_t telemetry_counter = 0;
+    static uint8_t imu_failure_count = 0;
 
     while (1) {
         // 1. Ensure periodic execution (more precise than vTaskDelay)
@@ -651,14 +681,26 @@ static void control_task(void *pvParameters) {
         // --- Sensor Update Section ---
         
         // IMU Update
-        if (imu_sensor_update(&imu) == ESP_OK) {
-             float pitch = imu_sensor_get_pitch(&imu);
-             float gyro_y = imu_sensor_get_gyro_y(&imu);
+       esp_err_t imu_status = imu_sensor_update(&imu);
+       if (imu_status == ESP_OK) {
+           imu_failure_count = 0;
+           float pitch = imu_sensor_get_pitch(&imu);
+           float gyro_y = imu_sensor_get_gyro_y(&imu);
+
+           imu_pitch_polarity_probe(pitch);
              
-             // Kalman Filter Update with actual dt
-             float filtered = kalman_filter_get_angle(&kalman_pitch, pitch, gyro_y, dt);
-             set_filtered_angle(filtered);
-        }
+           // Kalman Filter Update with actual dt
+           float filtered = kalman_filter_get_angle(&kalman_pitch, pitch, gyro_y, dt);
+           set_filtered_angle(filtered);
+       } else {
+           imu_failure_count++;
+           BSW_LOGW(TAG, "IMU update failed (%d/%d)", imu_failure_count, CONFIG_IMU_MAX_CONSECUTIVE_FAILURES);
+             if (imu_failure_count >= CONFIG_IMU_MAX_CONSECUTIVE_FAILURES) {
+                 enter_imu_error_state("IMU communication lost");
+                 imu_failure_count = 0;
+             }
+           continue;
+       }
 
         // GPS Update
         gps_sensor_update(&gps);
@@ -667,7 +709,8 @@ static void control_task(void *pvParameters) {
              est_lon = gps_sensor_get_longitude(&gps);
              is_pos_initialized = true;
              
-             if (gps_sensor_get_speed(&gps) > 1.0f) {
+             float gps_speed_ms = gps_sensor_get_speed(&gps) / 3.6f; // km/h -> m/s
+             if (gps_speed_ms > CONFIG_GPS_HEADING_MIN_SPEED_MS) {
                  robot_heading = gps_sensor_get_course(&gps);
              }
         }
@@ -776,6 +819,8 @@ static void control_task(void *pvParameters) {
             // Compute dual-loop balance control output with ACTUAL dt
             float motor_output = balance_pid_compute_balance(&balance_pid, current_angle, gyro_rate, current_velocity, dt);
             current_motor_output = motor_output;
+
+            verify_control_polarity(current_angle, motor_output);
             
             remote_command_t temp_cmd = {0};
             temp_cmd.turn = (int8_t)target_turn; 
@@ -904,12 +949,85 @@ static void update_motors(float motor_output, remote_command_t cmd) {
     float left_motor_speed = motor_output - turn_adjustment;
     float right_motor_speed = motor_output + turn_adjustment;
     
-    // Get current battery voltage for compensation
-    float battery_voltage = battery_sensor_read_voltage(&battery_sensor);
+    // Get current battery voltage for compensation / cutoff
+    static float filtered_battery_voltage = 0.0f;
+    static bool battery_filter_initialized = false;
+
+    float battery_voltage_raw = battery_sensor_read_voltage(&battery_sensor);
+
+    if (battery_voltage_raw <= CONFIG_BATTERY_CRITICAL_THRESHOLD) {
+        motor_control_stop(&left_motor);
+        motor_control_stop(&right_motor);
+        balance_pid_reset(&balance_pid);
+        set_robot_state(ROBOT_STATE_IDLE);
+        BSW_LOGW(TAG, "Battery cutoff active (%.2fV <= %.2fV). Motors disabled.",
+                 battery_voltage_raw, CONFIG_BATTERY_CRITICAL_THRESHOLD);
+        return;
+    }
+
+    float compensated_voltage = battery_voltage_raw;
+    if (battery_voltage_raw > 0.0f) {
+        if (!battery_filter_initialized) {
+            filtered_battery_voltage = battery_voltage_raw;
+            battery_filter_initialized = true;
+        } else {
+            filtered_battery_voltage += CONFIG_BATTERY_VOLTAGE_LPF_ALPHA * (battery_voltage_raw - filtered_battery_voltage);
+        }
+        compensated_voltage = filtered_battery_voltage;
+    }
 
     // Apply to motors with voltage compensation
-    motor_control_set_speed_compensated(&left_motor, (int)left_motor_speed, battery_voltage);
-    motor_control_set_speed_compensated(&right_motor, (int)right_motor_speed, battery_voltage);
+    motor_control_set_speed_compensated(&left_motor, (int)left_motor_speed, compensated_voltage);
+    motor_control_set_speed_compensated(&right_motor, (int)right_motor_speed, compensated_voltage);
+}
+
+static void apply_stored_pitch_offset(const tuning_params_t* params) {
+    float offset = (params != NULL) ? params->pitch_offset_deg : 0.0f;
+    imu_sensor_set_pitch_offset(&imu, offset);
+    BSW_LOGI(TAG, "Pitch offset loaded from NVS: %.2f°", offset);
+}
+
+static void enter_imu_error_state(const char* reason) {
+    motor_control_stop(&left_motor);
+    motor_control_stop(&right_motor);
+    balance_pid_reset(&balance_pid);
+    set_robot_state(ROBOT_STATE_ERROR);
+    rgb_led_set_color(LED_COLOR_RED);
+    BSW_LOGE(TAG, "IMU FAILSAFE engaged: %s", reason ? reason : "Unknown");
+}
+
+static void verify_control_polarity(float pitch, float motor_output) {
+    static bool polarity_checked = false;
+    if (polarity_checked) return;
+
+    if (fabsf(pitch) < 2.0f || fabsf(motor_output) < 15.0f) {
+        return; // wait for meaningful motion
+    }
+
+    bool same_sign = (pitch > 0.0f && motor_output > 0.0f) ||
+                     (pitch < 0.0f && motor_output < 0.0f);
+
+    if (same_sign) {
+        BSW_LOGI(TAG, "Control polarity OK: pitch=%.2f°, cmd=%.2f (matching sign)", pitch, motor_output);
+    } else {
+        BSW_LOGE(TAG, "Control polarity mismatch: pitch=%.2f°, cmd=%.2f. Check PID sign or swap motor leads!", pitch, motor_output);
+    }
+
+    polarity_checked = true;
+}
+
+static void imu_pitch_polarity_probe(float pitch) {
+    static bool pitch_polarity_logged = false;
+    if (pitch_polarity_logged) return;
+
+    if (fabsf(pitch) < 3.0f) {
+        return; // need a deliberate tilt
+    }
+
+    BSW_LOGI(TAG,
+             "IMU pitch polarity sample: %.2f°. Tilt the robot forward when capturing this log. Positive values must mean forward lean.",
+             pitch);
+    pitch_polarity_logged = true;
 }
 
 /**
@@ -935,26 +1053,41 @@ static void handle_remote_commands(void) {
         const char* text_command = ble_controller_get_text_command(&ble_controller);
         if (text_command != NULL) {
             BSW_LOGI(TAG, "Processing text command: %s", text_command);
-            esp_err_t ret = config_manager_handle_ble_command(text_command);
-            if (ret == ESP_OK) {
-                BSW_LOGI(TAG, "Text command processed successfully");
-                // Parameter update successful - reload parameters for active components
-                const tuning_params_t* params = config_manager_get_params();
-                if (params) {
-                    // Update PID parameters in real-time
-                    balance_pid_set_balance_tunings(&balance_pid, params->balance_kp, params->balance_ki, params->balance_kd);
-                    balance_pid_set_velocity_tunings(&balance_pid, params->velocity_kp, params->velocity_ki, params->velocity_kd);
-                    balance_pid_set_max_tilt_angle(&balance_pid, params->max_tilt_angle);
-                    
-                    // Update Kalman filter parameters in real-time
-                    kalman_pitch.Q_angle = params->kalman_q_angle;
-                    kalman_pitch.Q_bias = params->kalman_q_bias;
-                    kalman_pitch.R_measure = params->kalman_r_measure;
-                    
-                    BSW_LOGI(TAG, "Real-time parameter update completed");
+            bool command_handled = false;
+            if (strcasecmp(text_command, "CAL_PITCH") == 0) {
+                command_handled = true;
+                esp_err_t cal_ret = calibrate_pitch_offset_and_store();
+                if (cal_ret == ESP_OK) {
+                    const tuning_params_t* params = config_manager_get_params();
+                    apply_stored_pitch_offset(params);
+                    BSW_LOGI(TAG, "Pitch offset calibration applied successfully");
+                } else {
+                    BSW_LOGE(TAG, "Pitch calibration failed (err=%d)", cal_ret);
                 }
-            } else {
-                BSW_LOGE(TAG, "Failed to process text command: %d", ret);
+            }
+
+            if (!command_handled) {
+                esp_err_t ret = config_manager_handle_ble_command(text_command);
+                if (ret == ESP_OK) {
+                    BSW_LOGI(TAG, "Text command processed successfully");
+                    // Parameter update successful - reload parameters for active components
+                    const tuning_params_t* params = config_manager_get_params();
+                    if (params) {
+                        // Update PID parameters in real-time
+                        balance_pid_set_balance_tunings(&balance_pid, params->balance_kp, params->balance_ki, params->balance_kd);
+                        balance_pid_set_velocity_tunings(&balance_pid, params->velocity_kp, params->velocity_ki, params->velocity_kd);
+                        balance_pid_set_max_tilt_angle(&balance_pid, params->max_tilt_angle);
+                        
+                        // Update Kalman filter parameters in real-time
+                        kalman_pitch.Q_angle = params->kalman_q_angle;
+                        kalman_pitch.Q_bias = params->kalman_q_bias;
+                        kalman_pitch.R_measure = params->kalman_r_measure;
+                        
+                        BSW_LOGI(TAG, "Real-time parameter update completed");
+                    }
+                } else {
+                    BSW_LOGE(TAG, "Failed to process text command: %d", ret);
+                }
             }
         }
     }
@@ -1178,7 +1311,7 @@ static void state_machine_update(void) {
 
     case ROBOT_STATE_STANDING_UP:
         if (servo_standup_is_complete(&servo_standup)) {
-            set_robot_state(ROBOT_STATE_IDLE);
+            set_robot_state(ROBOT_STATE_BALANCING);
         } else if (!servo_standup_is_standing_up(&servo_standup)) {
             // Standup failed or cancelled
             set_robot_state(ROBOT_STATE_IDLE);
