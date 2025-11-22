@@ -91,8 +91,9 @@ static void bsw_init_uart(void)
 // BSW UART 단일 문자 출력 (비트연산)
 static void bsw_uart_putchar_bitwise(char c)
 {
-    // UART FIFO가 가득 찰 때까지 대기
-    while (BSW_SYS_REG_READ(BSW_UART0_STATUS) & BSW_UART0_TXFIFO_FULL) {
+    // UART FIFO가 가득 찰 때까지 대기 (ESP32-C6: Bits 16-23 are TXFIFO_CNT)
+    // FIFO size is 128 bytes. Wait if count >= 126 to be safe.
+    while (((BSW_SYS_REG_READ(BSW_UART0_STATUS) >> 16) & 0xFF) >= 126) {
         // 대기 (FIFO 여유 공간 확보까지)
     }
     

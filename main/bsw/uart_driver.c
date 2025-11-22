@@ -332,7 +332,7 @@ esp_err_t uart_driver_init(bsw_uart_num_t port, uint32_t baudrate, bsw_gpio_num_
  */
 esp_err_t uart_driver_init_config(bsw_uart_num_t port, const uart_bitwise_config_t* config) {
     if (port >= BSW_UART_PORT_MAX || !config) {
-        bsw_log_bitwise(BSW_LOG_ERROR, UART_TAG, "Invalid UART port %d or config", port);
+        BSW_LOGE(UART_TAG, "Invalid UART port %d or config", port);
         return ESP_ERR_INVALID_ARG;
     }
     
@@ -360,7 +360,7 @@ esp_err_t uart_driver_init_config(bsw_uart_num_t port, const uart_bitwise_config
         periph_module_enable(periph_module);
 
         // 하드웨어 UART 직접 레지스터 설정
-        bsw_log_bitwise(BSW_LOG_INFO, UART_TAG, "Initializing hardware UART %d with bitwise register control", port);
+        BSW_LOGI(UART_TAG, "Initializing hardware UART %d with bitwise register control", port);
         
         // GPIO 핀을 UART 기능으로 설정
         bsw_gpio_configure_iomux(config->tx_pin, 1, false, false); // UART TX 기능

@@ -200,11 +200,12 @@ void bsw_watchdog_feed_bitwise(void);
 #define BSW_LOGI_BITWISE(tag, format, ...) bsw_log_bitwise(BSW_LOG_INFO, tag, format, ##__VA_ARGS__)
 #define BSW_LOGD_BITWISE(tag, format, ...) bsw_log_bitwise(BSW_LOG_DEBUG, tag, format, ##__VA_ARGS__)
 
-// 통합 BSW_LOG 매크로 (레벨 지정 방식)
-#define BSW_LOGE(tag, format, ...) bsw_log_bitwise(BSW_LOG_ERROR, tag, format, ##__VA_ARGS__)
-#define BSW_LOGW(tag, format, ...) bsw_log_bitwise(BSW_LOG_WARN, tag, format, ##__VA_ARGS__)
-#define BSW_LOGI(tag, format, ...) bsw_log_bitwise(BSW_LOG_INFO, tag, format, ##__VA_ARGS__)
-#define BSW_LOGD(tag, format, ...) bsw_log_bitwise(BSW_LOG_DEBUG, tag, format, ##__VA_ARGS__)
+// 통합 BSW_LOG 매크로 (ESP-IDF 표준 로깅 사용)
+#include "esp_log.h"
+#define BSW_LOGE(tag, format, ...) ESP_LOGE(tag, format, ##__VA_ARGS__)
+#define BSW_LOGW(tag, format, ...) ESP_LOGW(tag, format, ##__VA_ARGS__)
+#define BSW_LOGI(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
+#define BSW_LOGD(tag, format, ...) ESP_LOGD(tag, format, ##__VA_ARGS__)
 
 /** @} */ // BSW_SYSTEM_SERVICES
 

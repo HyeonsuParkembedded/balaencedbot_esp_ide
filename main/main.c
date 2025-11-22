@@ -38,6 +38,7 @@
 #include "bsw/uart_driver.h"
 #include "bsw/gpio_driver.h"
 #include "bsw/adc_driver.h"
+#include "bsw/pwm_driver.h"
 
 #include "input/imu_sensor.h"
 #include "logic/kalman_filter.h"
@@ -578,6 +579,15 @@ static void initialize_robot(void) {
         return;
     }
     BSW_LOGI(TAG, "GPIO driver initialized");
+
+    // Initialize PWM driver (required by Servo and Motors)
+    esp_err_t pwm_ret = pwm_driver_init();
+    if (pwm_ret != ESP_OK) {
+        BSW_LOGE(TAG, "Failed to initialize PWM driver!");
+        enter_safe_mode();
+        return;
+    }
+    BSW_LOGI(TAG, "PWM driver initialized");
     
     // Initialize error recovery system
     error_recovery_init();
