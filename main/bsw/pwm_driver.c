@@ -267,8 +267,9 @@ esp_err_t pwm_set_duty(pwm_channel_t channel, uint32_t duty) {
         return ret;
     }
     
-    BSW_LOGI(PWM_TAG, "LEDC PWM channel %d duty set to %lu (%.1f%%), LEDC_duty=%lu", 
-             channel, duty, (float)duty / 10.0f, ledc_duty);
+    // Excessive logging removed for performance
+    // BSW_LOGI(PWM_TAG, "LEDC PWM channel %d duty set to %lu (%.1f%%), LEDC_duty=%lu", 
+    //          channel, duty, (float)duty / 10.0f, ledc_duty);
     
     return ESP_OK;
 }

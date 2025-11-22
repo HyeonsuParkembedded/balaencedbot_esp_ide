@@ -1,4 +1,8 @@
-/**
+
+import os
+
+file_path = r"c:\Users\hyuns\Desktop\balaencedbot_esp_ide\main\bsw\i2c_driver.c"
+new_content = r"""/**
  * @file i2c_driver.c
  * @brief ESP32-C6 Hardware I2C Controller Implementation using ESP-IDF Driver
  * 
@@ -7,7 +11,7 @@
  * 
  * @author Hyeonsu Park, Suyong Kim (Modified by Copilot)
  * @date 2025-10-08
- * @version 7.1 (Standard ESP-IDF Driver with Config Support)
+ * @version 7.0 (Standard ESP-IDF Driver)
  */
 
 #include "i2c_driver.h"
@@ -24,8 +28,8 @@ static i2c_master_dev_handle_t dev_handle = NULL;
 static bool i2c_initialized = false;
 
 // Keep track of current device address to support multiple devices if needed
+// For now, we assume single device or re-add device if address changes
 static uint8_t current_device_addr = 0;
-static uint32_t current_clock_speed = I2C_DEFAULT_CLOCK_SPEED;
 
 esp_err_t i2c_driver_init(bsw_i2c_port_t port, bsw_gpio_num_t sda_pin, bsw_gpio_num_t scl_pin) {
     i2c_hw_config_t config = {
@@ -60,10 +64,8 @@ esp_err_t i2c_driver_init_config(bsw_i2c_port_t port, const i2c_hw_config_t* con
 
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
     
-    current_clock_speed = config->clock_speed;
     i2c_initialized = true;
-    ESP_LOGI(I2C_TAG, "I2C initialized successfully (SDA=%d, SCL=%d, Speed=%luHz)", 
-             config->sda_pin, config->scl_pin, current_clock_speed);
+    ESP_LOGI(I2C_TAG, "I2C initialized successfully");
     return ESP_OK;
 }
 
@@ -84,15 +86,10 @@ static esp_err_t ensure_device_handle(uint8_t device_addr) {
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = device_addr,
-        .scl_speed_hz = current_clock_speed,
+        .scl_speed_hz = 100000, // Default to 100kHz, can be parameterized if needed
     };
 
-    esp_err_t ret = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(I2C_TAG, "Failed to add device 0x%02X: %d", device_addr, ret);
-        return ret;
-    }
-    
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
     current_device_addr = device_addr;
     return ESP_OK;
 }
@@ -153,3 +150,9 @@ esp_err_t i2c_bus_recovery(bsw_i2c_port_t port) {
     // Not implemented for standard driver yet, or use i2c_master_bus_reset if available
     return ESP_OK;
 }
+"""
+
+with open(file_path, "w", encoding="utf-8") as f:
+    f.write(new_content)
+
+print("Successfully updated i2c_driver.c")

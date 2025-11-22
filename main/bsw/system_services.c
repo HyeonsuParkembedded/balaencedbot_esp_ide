@@ -11,6 +11,7 @@
  */
 
 #include "system_services.h"
+#include "esp_system.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -267,13 +268,7 @@ uint32_t bsw_get_time_ms(void) {
  * 시스템 리셋 레지스터를 직접 제어하여 재시작합니다.
  */
 void bsw_system_restart(void) {
-    // 소프트웨어 리셋 비트 설정
-    BSW_SYS_REG_SET_BIT(BSW_SYSTEM_RST_EN, (1 << 0));
-    
-    // 무한 루프 (리셋 발생까지 대기)
-    while (1) {
-        __asm__ __volatile__("nop");
-    }
+    esp_restart();
 }
 
 /**

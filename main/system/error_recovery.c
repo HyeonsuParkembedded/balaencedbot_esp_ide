@@ -156,8 +156,17 @@ void enter_safe_mode(void) {
     // 재시작 전 시스템 상태 기록
     log_system_health();
     
-    // 로그 출력을 위한 대기 시간
-    bsw_delay_ms(CONFIG_ERROR_RECOVERY_DELAY);
+    // 로그 출력을 위한 대기 시간 (WDT 피딩 포함)
+    uint32_t delay_remaining = CONFIG_ERROR_RECOVERY_DELAY;
+    while (delay_remaining > 0) {
+        esp_task_wdt_reset();
+        bsw_delay_ms(100);
+        if (delay_remaining >= 100) {
+            delay_remaining -= 100;
+        } else {
+            delay_remaining = 0;
+        }
+    }
     
     BSW_LOGE(TAG, "Restarting system...");
     bsw_system_restart();

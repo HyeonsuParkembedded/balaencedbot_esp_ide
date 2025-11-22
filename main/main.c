@@ -216,6 +216,8 @@ static void imu_pitch_polarity_probe(float pitch);
 static void set_filtered_angle(float angle);
 static void set_robot_state(robot_state_t new_state);
 
+
+
 /**
  * @brief 자이로스코프 오프셋 캘리브레이션
  * 
@@ -416,6 +418,16 @@ void app_main(void) {
     // Initialize robot components
     BSW_LOGI(TAG, "Initializing robot components...");
     vTaskDelay(pdMS_TO_TICKS(100)); // Allow logs to flush
+    
+    // Initialize BSW GPIO driver first (required by all other drivers)
+    esp_err_t gpio_ret = bsw_gpio_init();
+    if (gpio_ret != ESP_OK) {
+        BSW_LOGE(TAG, "Failed to initialize GPIO driver!");
+        set_robot_state(ROBOT_STATE_ERROR);
+        esp_restart();
+    }
+    BSW_LOGI(TAG, "GPIO driver initialized");
+
     initialize_robot();
 
     // Set initial state to idle after successful initialization
@@ -571,15 +583,8 @@ static esp_err_t init_config_manager_wrapper(void) {
  * - PID 제어기
  */
 static void initialize_robot(void) {
-    // Initialize BSW GPIO driver first (required by all other drivers)
-    esp_err_t gpio_ret = bsw_gpio_init();
-    if (gpio_ret != ESP_OK) {
-        BSW_LOGE(TAG, "Failed to initialize GPIO driver!");
-        enter_safe_mode();
-        return;
-    }
-    BSW_LOGI(TAG, "GPIO driver initialized");
-
+    // GPIO driver is already initialized in app_main()
+    
     // Initialize PWM driver (required by Servo and Motors)
     esp_err_t pwm_ret = pwm_driver_init();
     if (pwm_ret != ESP_OK) {
@@ -600,8 +605,8 @@ static void initialize_robot(void) {
         {"Right_Encoder", init_right_encoder_wrapper, COMPONENT_OPTIONAL, false, 0},  // ⚠️ OPTIONAL로 변경
         {"GPS_Sensor", init_gps_wrapper, COMPONENT_OPTIONAL, false, 0},
         {"Battery_Sensor", init_battery_wrapper, COMPONENT_IMPORTANT, false, 0},
-        {"BLE_Controller", init_ble_wrapper, COMPONENT_IMPORTANT, false, 0},
-        {"Servo_Standup", init_servo_wrapper, COMPONENT_IMPORTANT, false, 0}
+        {"BLE_Controller", init_ble_wrapper, COMPONENT_IMPORTANT, false, 0}
+        // Servo_Standup moved to after motor initialization to avoid PWM timer conflict
     };
     
     int num_components = sizeof(components) / sizeof(components[0]);
@@ -649,6 +654,13 @@ static void initialize_robot(void) {
     }
     BSW_LOGI(TAG, "Right motor initialized");
     
+    // Initialize Servo Standup (Moved here to avoid PWM timer conflict with motors)
+    // Motors (High Freq) must be initialized before Servo (Low Freq) on ESP32-C6
+    component_info_t servo_component = {"Servo_Standup", init_servo_wrapper, COMPONENT_IMPORTANT, false, 0};
+    BSW_LOGI(TAG, "Starting init for Servo_Standup...");
+    bool servo_init_result = initialize_component_with_retry(&servo_component);
+    BSW_LOGI(TAG, "Finished init for Servo_Standup: %s", servo_init_result ? "SUCCESS" : "FAILED");
+
     // Initialize PID controllers with tuned parameters
     balance_pid_init(&balance_pid);
     if (params) {
@@ -732,10 +744,21 @@ static void control_task(void *pvParameters) {
            set_filtered_angle(filtered);
        } else {
            imu_failure_count++;
-           BSW_LOGW(TAG, "IMU update failed (%d/%d)", imu_failure_count, CONFIG_IMU_MAX_CONSECUTIVE_FAILURES);
+           BSW_LOGW(TAG, "IMU update failed (%d/%d) Error: %d", imu_failure_count, CONFIG_IMU_MAX_CONSECUTIVE_FAILURES, imu_status);
              if (imu_failure_count >= CONFIG_IMU_MAX_CONSECUTIVE_FAILURES) {
                  enter_imu_error_state("IMU communication lost");
                  imu_failure_count = 0;
+                 
+                 // Attempt recovery
+                 BSW_LOGW(TAG, "Attempting IMU recovery...");
+                 esp_err_t recovery_ret = imu_sensor_init(&imu, BSW_I2C_PORT_0, CONFIG_MPU6050_SDA_PIN, CONFIG_MPU6050_SCL_PIN);
+                 if (recovery_ret == ESP_OK) {
+                     BSW_LOGI(TAG, "IMU recovery successful!");
+                     // Reset state to IDLE if recovery succeeds
+                     set_robot_state(ROBOT_STATE_IDLE);
+                 } else {
+                     BSW_LOGE(TAG, "IMU recovery failed: %d", recovery_ret);
+                 }
              }
            continue;
        }

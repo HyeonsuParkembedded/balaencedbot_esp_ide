@@ -5,7 +5,7 @@
   "idf.openOcdConfigs": [
     "board/esp32c6-builtin.cfg"
   ],
-  "idf.portWin": "COM5",
+  "idf.portWin": "COM4",
   "idf.toolsPathWin": "C:\\Users\\hyuns\\.espressif",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c6"
@@ -82,5 +82,5 @@
     "string.h": "c",
     "error_recovery.h": "c"
   },
-  "idf.flashType": "JTAG"
+  "idf.flashType": "UART"
 }

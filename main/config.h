@@ -47,10 +47,10 @@ extern "C" {
  * @brief 6축 관성 센서 I2C 인터페이스 설정
  * @{
  */
-#define CONFIG_MPU6050_SDA_PIN          GPIO_NUM_6   ///< LP_I2C_SDA
-#define CONFIG_MPU6050_SCL_PIN          GPIO_NUM_7   ///< LP_I2C_SCL
+#define CONFIG_MPU6050_SDA_PIN          GPIO_NUM_7   ///< LP_I2C_SDA (Swapped)
+#define CONFIG_MPU6050_SCL_PIN          GPIO_NUM_6   ///< LP_I2C_SCL (Swapped)
 #define CONFIG_MPU6050_I2C_PORT         I2C_NUM_0    ///< I2C 포트 번호
-#define CONFIG_I2C_MASTER_CLOCK_HZ      400000       ///< I2C 버스 속도 (400kHz Fast Mode)
+#define CONFIG_I2C_MASTER_CLOCK_HZ      100000       ///< I2C 버스 속도 (100kHz Standard Mode for stability)
 /** @} */
 
 /**
@@ -130,7 +130,7 @@ extern "C" {
 #define CONFIG_BATTERY_MAX_VOLTAGE      8.4f         ///< 배터리 최대 전압 (V) - 2S 리튬 완충
 #define CONFIG_BATTERY_MIN_VOLTAGE      6.0f         ///< 배터리 최소 전압 (V) - 2S 리튬 방전 컷오프
 #define CONFIG_BATTERY_LOW_THRESHOLD    6.8f         ///< 저전압 경고 임계값 (V)
-#define CONFIG_BATTERY_CRITICAL_THRESHOLD 6.4f       ///< 위험 전압 임계값 (V)
+#define CONFIG_BATTERY_CRITICAL_THRESHOLD 0.0f       ///< 위험 전압 임계값 (V) - 0.0f for testing without battery
 #define CONFIG_BATTERY_VOLTAGE_LPF_ALPHA 0.1f        ///< 배터리 전압 저역통과 필터 알파 값 (0~1)
 #define CONFIG_BATTERY_COMPENSATION_MAX_GAIN 1.5f    ///< 전압 보상 최대 배율 제한
 /** @} */

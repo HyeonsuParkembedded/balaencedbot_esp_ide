@@ -1,13 +1,13 @@
 /**
  * @file imu_sensor.c
- * @brief MPU6050 IMU 센서 드라이버 구현 파일
+ * @brief MPU6050/MPU6500 IMU Sensor Driver Implementation
  * 
- * MPU6050 6축 관성 측정 장치의 저수준 제어 및 데이터 처리를 구현합니다.
- * I2C 통신을 통해 가속도계/자이로스코프 데이터를 읽어와 피치/롤 각도를 계산합니다.
+ * Implements low-level control and data processing for MPU6050/MPU6500 6-axis IMU.
+ * Reads accelerometer/gyroscope data via I2C and calculates pitch/roll angles.
  * 
- * @author Hyeonsu Park, Suyong Kim
- * @date 2025-09-20
- * @version 1.0
+ * @author Hyeonsu Park, Suyong Kim (Modified by Copilot)
+ * @date 2025-10-08
+ * @version 1.1 (Added MPU6500 Support)
  */
 
 #include "imu_sensor.h"
@@ -15,43 +15,44 @@
 #include "../bsw/system_services.h"
 #include <math.h>
 
-static const char* IMU_TAG = "IMU_SENSOR"; ///< 로깅 태그
+static const char* IMU_TAG = "IMU_SENSOR"; ///< Logging Tag
 
 /**
- * @defgroup MPU6050_REGISTERS MPU6050 레지스터 주소
- * @brief MPU6050 센서의 내부 레지스터 주소 정의
+ * @defgroup MPU6050_REGISTERS MPU6050/MPU6500 Register Addresses
+ * @brief Internal register addresses for MPU6050/MPU6500 sensors
  * @{
  */
-#define MPU6050_ADDR            0x68  ///< MPU6050 I2C 디바이스 주소
-#define MPU6050_WHO_AM_I        0x75  ///< 디바이스 ID 레지스터
-#define MPU6050_PWR_MGMT_1      0x6B  ///< 전원 관리 레지스터 1
-#define MPU6050_GYRO_CONFIG     0x1B  ///< 자이로스코프 설정 레지스터
-#define MPU6050_ACCEL_CONFIG    0x1C  ///< 가속도계 설정 레지스터
-#define MPU6050_ACCEL_XOUT_H    0x3B  ///< 가속도계 X축 상위 바이트
-#define MPU6050_GYRO_XOUT_H     0x43  ///< 자이로스코프 X축 상위 바이트
-#define MPU6050_CONFIG_REG      0x1A  ///< 설정 레지스터 (DLPF)
+#define MPU6050_ADDR            0x68  ///< I2C Device Address (AD0 Low)
+#define MPU6050_WHO_AM_I        0x75  ///< Device ID Register
+#define MPU6050_PWR_MGMT_1      0x6B  ///< Power Management 1
+#define MPU6050_GYRO_CONFIG     0x1B  ///< Gyroscope Configuration
+#define MPU6050_ACCEL_CONFIG    0x1C  ///< Accelerometer Configuration
+#define MPU6050_ACCEL_XOUT_H    0x3B  ///< Accelerometer X-Axis High Byte
+#define MPU6050_GYRO_XOUT_H     0x43  ///< Gyroscope X-Axis High Byte
+#define MPU6050_CONFIG_REG      0x1A  ///< Configuration Register (DLPF)
+#define MPU6500_ACCEL_CONFIG_2  0x1D  ///< MPU6500 Specific: Accel DLPF Config
 /** @} */
 
 /**
- * @brief MPU6050 IMU 센서를 초기화하고 I2C 통신 설정
+ * @brief Initialize MPU6050/MPU6500 IMU sensor and I2C communication
  * 
- * MPU6050 센서와의 I2C 통신을 설정하고 센서를 초기화합니다.
- * WHO_AM_I 레지스터를 확인하여 센서 연결을 검증하고,
- * 전원 관리, 자이로스코프, 가속도계 설정을 구성합니다.
+ * Sets up I2C communication and initializes the sensor.
+ * Verifies sensor connection by checking WHO_AM_I register (Supports 0x68 and 0x70).
+ * Configures power management, gyroscope, and accelerometer settings.
  * 
- * 초기화 과정:
- * 1. I2C 드라이버 초기화
- * 2. WHO_AM_I 레지스터 확인 (0x68)
- * 3. 전원 관리 레지스터 설정 (슬립 모드 해제)
- * 4. DLPF 설정 (44Hz 대역폭)
- * 5. 자이로스코프 범위 설정 (±500°/s)
- * 6. 가속도계 범위 설정 (±2g)
+ * Initialization Steps:
+ * 1. Initialize I2C driver
+ * 2. Check WHO_AM_I register (0x68 for MPU6050, 0x70 for MPU6500)
+ * 3. Wake up sensor (PWR_MGMT_1)
+ * 4. Configure DLPF (44Hz bandwidth)
+ * 5. Configure Gyroscope range (±500°/s)
+ * 6. Configure Accelerometer range (±2g)
  * 
- * @param sensor IMU 센서 구조체 포인터
- * @param port 사용할 I2C 포트 번호
- * @param sda_pin I2C SDA 핀 번호
- * @param scl_pin I2C SCL 핀 번호
- * @return ESP_OK 성공, ESP_FAIL 센서 연결 실패 또는 I2C 오류
+ * @param sensor IMU sensor structure pointer
+ * @param port I2C port number
+ * @param sda_pin I2C SDA pin number
+ * @param scl_pin I2C SCL pin number
+ * @return ESP_OK on success, ESP_FAIL on connection failure or I2C error
  */
 esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_num_t sda_pin, bsw_gpio_num_t scl_pin) {
     sensor->i2c_port = port;
@@ -71,24 +72,40 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_nu
     uint8_t who_am_i;
     ret = i2c_read_register(port, MPU6050_ADDR, MPU6050_WHO_AM_I, &who_am_i, 1);
     if (ret != ESP_OK) {
+        BSW_LOGE(IMU_TAG, "Failed to read WHO_AM_I register (Error: %d). Check wiring/pull-ups.", ret);
         return ret;
     }
 
-    if (who_am_i != MPU6050_ADDR) {
-        BSW_LOGE(IMU_TAG, "MPU6050 not found or wrong ID: 0x%02X", who_am_i);
+    // Support both MPU6050 (0x68) and MPU6500 (0x70) IDs
+    if (who_am_i != 0x68 && who_am_i != 0x70) {
+        BSW_LOGE(IMU_TAG, "Unknown IMU ID: 0x%02X (Expected 0x68[MPU6050] or 0x70[MPU6500])", who_am_i);
         return ESP_FAIL;
     }
+    
+    bool is_mpu6500 = (who_am_i == 0x70);
+    BSW_LOGI(IMU_TAG, "IMU Detected. ID: 0x%02X (%s)", who_am_i, is_mpu6500 ? "MPU6500" : "MPU6050");
 
-    // Wake up MPU6050
+    // Wake up MPU6050/6500
     ret = i2c_write_register(port, MPU6050_ADDR, MPU6050_PWR_MGMT_1, 0x00);
     if (ret != ESP_OK) {
         return ret;
     }
 
-    // DLPF 설정 (44Hz 대역폭)
+    // DLPF Config (44Hz bandwidth for Gyro/Temp)
     ret = i2c_write_register(port, MPU6050_ADDR, MPU6050_CONFIG_REG, 0x03);
     if (ret != ESP_OK) {
         return ret;
+    }
+
+    // MPU6500 Specific: Configure Accel DLPF (41Hz)
+    if (is_mpu6500) {
+        // ACCEL_CONFIG_2 (0x1D): accel_fchoice_b=0 (bit 3), A_DLPFCFG=3 (bits 2:0) -> 0x03
+        ret = i2c_write_register(port, MPU6050_ADDR, MPU6500_ACCEL_CONFIG_2, 0x03);
+        if (ret != ESP_OK) {
+            BSW_LOGW(IMU_TAG, "Failed to set MPU6500 Accel DLPF");
+        } else {
+            BSW_LOGI(IMU_TAG, "MPU6500 Accel DLPF configured (41Hz)");
+        }
     }
 
     // Configure gyroscope (±500 degrees/s)
@@ -111,19 +128,20 @@ esp_err_t imu_sensor_init(imu_sensor_t* sensor, bsw_i2c_port_t port, bsw_gpio_nu
 }
 
 /**
- * @brief IMU 센서 데이터를 업데이트하여 최신 관성 측정값 수신
+ * @brief Update IMU sensor data
  * 
- * MPU6050에서 14바이트의 연속 데이터를 읽어와 가속도계와 자이로스코프 값을 추출합니다.
- * 원시 데이터를 물리적 단위로 변환하고 가속도계 데이터로부터 피치/롤 각도를 계산합니다.
+ * Reads 14 bytes of continuous data from MPU6050/6500.
+ * Extracts accelerometer and gyroscope values.
+ * Converts raw data to physical units and calculates pitch/roll angles.
  * 
- * 데이터 처리 과정:
- * 1. I2C로 14바이트 연속 읽기 (가속도 6바이트 + 온도 2바이트 + 자이로 6바이트)
- * 2. 16비트 빅엔디안 데이터를 정수로 변환
- * 3. 스케일링 팩터 적용 (가속도: /16384, 자이로: /65.5)
- * 4. 가속도계 데이터로 피치/롤 각도 계산 (atan2 함수 사용)
+ * Data Processing:
+ * 1. Read 14 bytes via I2C (Accel 6B + Temp 2B + Gyro 6B)
+ * 2. Convert 16-bit Big-Endian data to integers
+ * 3. Apply scaling factors (Accel: /16384, Gyro: /65.5)
+ * 4. Calculate Pitch/Roll from accelerometer data (using atan2)
  * 
- * @param sensor IMU 센서 구조체 포인터
- * @return ESP_OK 성공, ESP_FAIL 센서가 초기화되지 않음 또는 I2C 오류
+ * @param sensor IMU sensor structure pointer
+ * @return ESP_OK on success, ESP_FAIL if not initialized or I2C error
  */
 esp_err_t imu_sensor_update(imu_sensor_t* sensor) {
     if (!sensor->data.initialized) {
@@ -164,123 +182,90 @@ esp_err_t imu_sensor_update(imu_sensor_t* sensor) {
 }
 
 /**
- * @brief 현재 피치(Pitch) 각도 반환
- * 
- * 가속도계 데이터로부터 계산된 Y축 중심 회전 각도를 반환합니다.
- * 피치 각도는 전후 기울어짐을 나타냅니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return 피치 각도 (도 단위, -180° ~ +180°)
+ * @brief Get current Pitch angle
+ * @param sensor IMU sensor structure pointer
+ * @return Pitch angle (degrees, -180° ~ +180°)
  */
 float imu_sensor_get_pitch(imu_sensor_t* sensor) {
     return sensor->data.pitch;
 }
 
 /**
- * @brief 현재 롤(Roll) 각도 반환
- * 
- * 가속도계 데이터로부터 계산된 X축 중심 회전 각도를 반환합니다.
- * 롤 각도는 좌우 기울어짐을 나타냅니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return 롤 각도 (도 단위, -180° ~ +180°)
+ * @brief Get current Roll angle
+ * @param sensor IMU sensor structure pointer
+ * @return Roll angle (degrees, -180° ~ +180°)
  */
 float imu_sensor_get_roll(imu_sensor_t* sensor) {
     return sensor->data.roll;
 }
 
 /**
- * @brief X축 자이로스코프 각속도 반환
- * 
- * X축(롤축) 중심의 회전 각속도를 반환합니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return X축 각속도 (°/s, ±250°/s 범위)
+ * @brief Get X-axis Gyroscope angular velocity
+ * @param sensor IMU sensor structure pointer
+ * @return X-axis angular velocity (°/s)
  */
 float imu_sensor_get_gyro_x(imu_sensor_t* sensor) {
     return sensor->data.gyro_x;
 }
 
 /**
- * @brief Y축 자이로스코프 각속도 반환
- * 
- * Y축(피치축) 중심의 회전 각속도를 반환합니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return Y축 각속도 (°/s, ±250°/s 범위)
+ * @brief Get Y-axis Gyroscope angular velocity
+ * @param sensor IMU sensor structure pointer
+ * @return Y-axis angular velocity (°/s)
  */
 float imu_sensor_get_gyro_y(imu_sensor_t* sensor) {
     return sensor->data.gyro_y;
 }
 
 /**
- * @brief Z축 자이로스코프 각속도 반환
- * 
- * Z축(요축) 중심의 회전 각속도를 반환합니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return Z축 각속도 (°/s, ±250°/s 범위)
+ * @brief Get Z-axis Gyroscope angular velocity
+ * @param sensor IMU sensor structure pointer
+ * @return Z-axis angular velocity (°/s)
  */
 float imu_sensor_get_gyro_z(imu_sensor_t* sensor) {
     return sensor->data.gyro_z;
 }
 
 /**
- * @brief X축 가속도 반환
- * 
- * X축 방향의 선형 가속도를 반환합니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return X축 가속도 (g 단위, ±2g 범위)
+ * @brief Get X-axis Acceleration
+ * @param sensor IMU sensor structure pointer
+ * @return X-axis acceleration (g)
  */
 float imu_sensor_get_accel_x(imu_sensor_t* sensor) {
     return sensor->data.accel_x;
 }
 
 /**
- * @brief Y축 가속도 반환
- * 
- * Y축 방향의 선형 가속도를 반환합니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return Y축 가속도 (g 단위, ±2g 범위)
+ * @brief Get Y-axis Acceleration
+ * @param sensor IMU sensor structure pointer
+ * @return Y-axis acceleration (g)
  */
 float imu_sensor_get_accel_y(imu_sensor_t* sensor) {
     return sensor->data.accel_y;
 }
 
 /**
- * @brief Z축 가속도 반환
- * 
- * Z축 방향의 선형 가속도를 반환합니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return Z축 가속도 (g 단위, ±2g 범위)
+ * @brief Get Z-axis Acceleration
+ * @param sensor IMU sensor structure pointer
+ * @return Z-axis acceleration (g)
  */
 float imu_sensor_get_accel_z(imu_sensor_t* sensor) {
     return sensor->data.accel_z;
 }
 
 /**
- * @brief IMU 센서 초기화 상태 확인
- * 
- * 센서가 올바르게 초기화되어 데이터 읽기가 가능한지 확인합니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @return 초기화 완료 시 true, 미완료 시 false
+ * @brief Check if IMU sensor is initialized
+ * @param sensor IMU sensor structure pointer
+ * @return true if initialized, false otherwise
  */
 bool imu_sensor_is_initialized(imu_sensor_t* sensor) {
     return sensor->data.initialized;
 }
 
 /**
- * @brief 피치 각도 오프셋 설정
- * 
- * 자이로스코프 캘리브레이션을 통해 측정된 오프셋 값을 설정합니다.
- * 이 값은 이후 측정되는 피치 각도에서 차감됩니다.
- * 
- * @param sensor IMU 센서 구조체 포인터
- * @param offset 설정할 오프셋 값 (degree)
+ * @brief Set Pitch angle offset
+ * @param sensor IMU sensor structure pointer
+ * @param offset Offset value (degrees)
  */
 void imu_sensor_set_pitch_offset(imu_sensor_t* sensor, float offset) {
     sensor->data.pitch_offset = offset;
