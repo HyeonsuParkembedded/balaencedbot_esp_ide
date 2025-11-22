@@ -391,13 +391,30 @@ void app_main(void) {
     
     // Initialize Task Watchdog Timer (TWDT)
     const esp_task_wdt_config_t wdt_config = {
-        .timeout_ms = 2000,
+        .timeout_ms = 10000, // Keep 10s to prevent boot loop during heavy init
         .trigger_panic = true,
     };
-    ESP_ERROR_CHECK(esp_task_wdt_init(&wdt_config));
-    BSW_LOGI(TAG, "Task Watchdog Timer initialized");
+    
+    // [Fix for IDF v5.5.1] Try reconfigure FIRST to avoid "TWDT already initialized" error
+    esp_err_t wdt_err = esp_task_wdt_reconfigure(&wdt_config);
+    
+    if (wdt_err == ESP_ERR_INVALID_STATE) {
+        // Not initialized yet, so initialize it
+        BSW_LOGI(TAG, "TWDT not active, initializing...");
+        ESP_ERROR_CHECK(esp_task_wdt_init(&wdt_config));
+    } else {
+        // Reconfigured successfully (or other error caught by CHECK)
+        ESP_ERROR_CHECK(wdt_err);
+        BSW_LOGI(TAG, "Task Watchdog Timer reconfigured to 10s");
+    }
+    BSW_LOGI(TAG, "Task Watchdog Timer initialized (10s)");
+
+    // Register main task to WDT immediately so we can reset it during init
+    esp_task_wdt_add(NULL);
 
     // Initialize robot components
+    BSW_LOGI(TAG, "Initializing robot components...");
+    vTaskDelay(pdMS_TO_TICKS(100)); // Allow logs to flush
     initialize_robot();
 
     // Set initial state to idle after successful initialization
@@ -413,6 +430,8 @@ void app_main(void) {
     
     // Main loop
     while (1) {
+        esp_task_wdt_reset();
+
         // Update servo standup mechanism
         servo_standup_update(&servo_standup);
         
@@ -579,7 +598,16 @@ static void initialize_robot(void) {
     
     // Initialize each component with retry logic
     for (int i = 0; i < num_components; i++) {
-        initialize_component_with_retry(&components[i]);
+        esp_task_wdt_reset(); // Feed WDT before each component init
+        
+        // [Power Stability] Add delay between component initializations to reduce inrush current
+        if (i > 0) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+        
+        BSW_LOGI(TAG, "Starting init for %s...", components[i].name);
+        bool init_result = initialize_component_with_retry(&components[i]);
+        BSW_LOGI(TAG, "Finished init for %s: %s", components[i].name, init_result ? "SUCCESS" : "FAILED");
     }
     
     // Initialize Kalman filter with tuned parameters

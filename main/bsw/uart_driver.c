@@ -27,6 +27,7 @@
 #include "esp_timer.h"
 #include "esp_intr_alloc.h"
 #include "driver/gptimer.h"
+#include "esp_private/periph_ctrl.h" // Required for periph_module_enable
 #include <string.h>
 
 static const char* UART_TAG = "UART_BITWISE";
@@ -344,8 +345,9 @@ esp_err_t uart_driver_init_config(bsw_uart_num_t port, const uart_bitwise_config
         }
     }
     
-    // 뮤텍스 획득
-    if (xSemaphoreTake(uart_mutex[port], portMAX_DELAY) != pdTRUE) {
+    // 뮤텍스 획득 (최대 1초 대기)
+    if (xSemaphoreTake(uart_mutex[port], pdMS_TO_TICKS(1000)) != pdTRUE) {
+        BSW_LOGE(UART_TAG, "UART %d Mutex acquisition timeout!", port);
         return ESP_ERR_TIMEOUT;
     }
     
@@ -353,6 +355,10 @@ esp_err_t uart_driver_init_config(bsw_uart_num_t port, const uart_bitwise_config
     uart_configs[port] = *config;
     
     if (config->use_hardware && port < BSW_UART_SOFTWARE) {
+        // [Fix for ESP32-C6] Enable UART peripheral clock before accessing registers
+        periph_module_t periph_module = (port == BSW_UART_PORT_0) ? PERIPH_UART0_MODULE : PERIPH_UART1_MODULE;
+        periph_module_enable(periph_module);
+
         // 하드웨어 UART 직접 레지스터 설정
         bsw_log_bitwise(BSW_LOG_INFO, UART_TAG, "Initializing hardware UART %d with bitwise register control", port);
         

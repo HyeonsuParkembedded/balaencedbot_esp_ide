@@ -34,6 +34,10 @@ bsw_err_t error_recovery_init(void) {
     return BSW_OK;
 }
 
+#include "esp_task_wdt.h" // Watchdog Timer
+
+// ...existing code...
+
 /**
  * @brief 재시도 기능이 있는 컴포넌트 초기화 구현
  * 
@@ -54,6 +58,9 @@ bool initialize_component_with_retry(component_info_t* component) {
     
     // 설정된 횟수만큼 초기화 재시도
     for (int retry = 0; retry < CONFIG_MAX_INIT_RETRIES; retry++) {
+        // Feed WDT before each attempt
+        esp_task_wdt_reset();
+        
         bsw_err_t ret = component->init_func();
         if (ret == BSW_OK) {
             component->initialized = true;
@@ -72,6 +79,8 @@ bool initialize_component_with_retry(component_info_t* component) {
                 (ret == ESP_OK) ? "ESP_OK" : "ESP_FAIL");
         
         if (retry < CONFIG_MAX_INIT_RETRIES - 1) {
+            // Feed WDT before delay
+            esp_task_wdt_reset();
             bsw_delay_ms(CONFIG_ERROR_RECOVERY_DELAY);
         }
     }

@@ -25,6 +25,7 @@
 #include "host/ble_gatt.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include "esp_bt.h" // For TX power control
 
 static const char* TAG = "BLE_DRIVER";
 
@@ -232,11 +233,19 @@ bool ble_driver_init(const char* device_name, ble_event_callback_t callback, voi
     g_ble_ctx.user_data = user_data;
     g_ble_ctx.conn_handle = BLE_HS_CONN_HANDLE_NONE;
     
+    // [Power Stability] Add delay BEFORE initializing RF to allow voltage to stabilize
+    BSW_LOGI(TAG, "Waiting for power stabilization before RF init...");
+    vTaskDelay(pdMS_TO_TICKS(500));
+
     // Initialize NimBLE (HCI init not needed in v5.5)
     
     // Initialize NimBLE host
     nimble_port_init();
     
+    // [Power Save] Reduce TX power to avoid brownout (ESP32-C6 specific)
+    // Note: This might need to be called after controller init depending on IDF version
+    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_N3); // -3dBm
+
     // Initialize services
     ble_svc_gap_init();
     ble_svc_gatt_init();
