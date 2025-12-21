@@ -201,21 +201,22 @@ void motor_control_brake(motor_control_t* motor) {
  * @brief 전압 보상 모터 속도 설정 구현 (최대 토크 보장)
  *
  * 배터리 전압 변동에도 일정한 토크를 유지하도록 PWM 듀티를 자동 보정합니다.
- * 기준 전압(12V) 대비 현재 전압 비율로 속도 명령을 스케일링합니다.
+ * 기준 전압(8.4V) 대비 현재 전압 비율로 속도 명령을 스케일링합니다.
  *
- * 동작 원리:
- * - 배터리 전압 12V (만충): 보정 없음 (1.0배)
- * - 배터리 전압 8V (방전): PWM 듀티 1.5배 증가
- * - 배터리 전압 6V (저전압): PWM 듀티 최대 1.5배로 제한
+ * 동작 원리 (2S 리튬 배터리 기준):
+ * - 배터리 전압 8.4V (만충): 보정 없음 (1.0배)
+ * - 배터리 전압 7.4V (공칭): PWM 듀티 1.14배 증가
+ * - 배터리 전압 6.0V (저전압): PWM 듀티 1.40배 증가
+ * - 최대 보상: 1.5배로 제한 (모터 보호)
  *
- * 이를 통해 배터리 방전 시에도 일정한 토크를 유지합니다.
+ * 이를 통해 배터리 방전 시에도 일정한 토크를 유지하면서 모터를 보호합니다.
  *
  * @param motor 모터 제어 구조체 포인터
  * @param speed 목표 속도 (-255 ~ +255)
  * @param current_voltage 현재 배터리 전압 (V)
  */
 void motor_control_set_speed_compensated(motor_control_t* motor, int speed, float current_voltage) {
-    const float NOMINAL_VOLTAGE = 12.0f; // 기준 전압 (2S 리튬 만충 기준)
+    const float NOMINAL_VOLTAGE = 8.4f; // 2S 리튬 배터리 만충 전압 (8.4V)
     int target_speed = speed;
 
     if (current_voltage > 0.0f && current_voltage <= CONFIG_BATTERY_CRITICAL_THRESHOLD) {
