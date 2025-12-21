@@ -904,16 +904,19 @@ static void control_task(void *pvParameters) {
             break;
         }
 
-        // Telemetry (20Hz = 100Hz / 5)
-        if (++telemetry_counter >= 5) {
-            telemetry_counter = 0;
-            if (ble_controller_is_connected(&ble_controller)) {
-                telemetry_data_t data;
-                data.angle = get_filtered_angle();
-                data.velocity = get_robot_velocity();
-                data.motor_output = current_motor_output;
+        // Telemetry (20Hz = 100Hz / 5) - Only if BLE connected
+        if (ble_controller_is_connected(&ble_controller)) {
+            if (++telemetry_counter >= 5) {
+                telemetry_counter = 0;
+                telemetry_data_t data = {
+                    .angle = get_filtered_angle(),
+                    .velocity = get_robot_velocity(),
+                    .motor_output = current_motor_output
+                };
                 ble_controller_send_raw(&ble_controller, (uint8_t*)&data, sizeof(data));
             }
+        } else {
+            telemetry_counter = 0; // Reset when disconnected
         }
     }
 }
