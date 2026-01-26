@@ -1,6 +1,6 @@
 # BalanceBot: 상용 제품 수준의 ESP32-C6 균형 로봇
 
-[![Docs](https://img.shields.io/badge/Docs-Google%20Code%20Wiki-blue)](https://github.com/HyeonsuParkembedded/balaencedbot_esp_ide/wiki)
+[![Docs](https://img.shields.io/badge/Docs-Google%20Code%20Wiki-blue)](https://codewiki.google/github.com/hyeonsuparkembedded/balaencedbot_esp_ide)
 
 이 프로젝트는 **ESP32-C6 RISC-V 160MHz**를 기반으로 한 고성능 2륜 균형 로봇입니다. **200Hz 고속 제어**와 **LEDC 하드웨어 PWM**으로 기존 대비 **60배 성능 향상**을 달성했으며, **AUTOSAR 유사 계층형 아키텍처**로 **이식성, 재사용성, 테스트 용이성**을 극대화했습니다.
 
