@@ -136,13 +136,22 @@ extern "C" {
 /** @} */
 
 /**
+ * @defgroup MOTOR_DRIVER_CONFIG TB6612FNG 모터 드라이버 설정
+ * @brief TB6612FNG 듀얼 모터 드라이버 제어 핀 설정
+ * @{
+ */
+#define CONFIG_MOTOR_STBY_PIN           GPIO_NUM_9   ///< TB6612FNG STBY (Standby) 핀 - HIGH: 활성화, LOW: 대기 모드
+#define CONFIG_MOTOR_PWM_FREQUENCY      20000        ///< TT 모터 최적 PWM 주파수 (20kHz, 가청 주파수 초과)
+/** @} */
+
+/**
  * @defgroup ROBOT_PHYSICAL_CONFIG 로봇 물리 파라미터
  * @brief 로봇의 물리적 치수 및 엔코더 사양
  * @{
  */
 #define CONFIG_ENCODER_PPR              1320         ///< 엔코더 펄스 수 (Pulse Per Revolution)
 #define CONFIG_WHEEL_DIAMETER_CM        6.5f         ///< 바퀴 지름 (cm)
-#define CONFIG_MOTOR_DEADZONE           35           ///< 모터 데드존 (PWM) - 실험을 통해 튜닝 필요
+#define CONFIG_MOTOR_DEADZONE           35           ///< TT 모터 데드존 (PWM) - TB6612FNG 특성 반영
 /** @} */
 
 /**

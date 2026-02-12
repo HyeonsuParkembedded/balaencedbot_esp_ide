@@ -1,13 +1,24 @@
 /**
  * @file motor_control.c
- * @brief 모터 제어 구현
- * 
- * H-브리지와 PWM을 사용한 DC 모터 제어 기능을 구현합니다.
- * 방향 제어를 위한 GPIO와 속도 제어를 위한 PWM을 조합하여 사용합니다.
- * 
+ * @brief TB6612FNG 모터 드라이버 제어 구현
+ *
+ * TB6612FNG 듀얼 H-브리지 모터 드라이버와 PWM을 사용한 TT 모터 제어 기능을 구현합니다.
+ *
+ * TB6612FNG 특징:
+ * - 듀얼 채널 (2개 모터 독립 제어)
+ * - 1.2A 연속, 3.2A 피크 전류
+ * - PWM 주파수: 최대 100kHz (TT 모터 최적: 20kHz)
+ * - STBY 핀: LOW일 때 저전력 대기 모드
+ *
+ * 제어 로직 (각 채널):
+ * - 전진: IN1=HIGH, IN2=LOW, PWM=듀티
+ * - 후진: IN1=LOW, IN2=HIGH, PWM=듀티
+ * - 쇼트 브레이크: IN1=HIGH, IN2=HIGH, PWM=듀티
+ * - 정지 (Coast): IN1=LOW, IN2=LOW
+ *
  * @author Hyeonsu Park, Suyong Kim
  * @date 2025-09-20
- * @version 1.0
+ * @version 2.0 (TB6612FNG 최적화)
  */
 
 #include <stdbool.h>
@@ -65,28 +76,37 @@ esp_err_t motor_control_init(motor_control_t* motor,
         return ret;
     }
 
-    // STBY 핀 활성화 (TB6612FNG)
+    // TB6612FNG STBY 핀 활성화 (필수)
     #ifdef CONFIG_MOTOR_STBY_PIN
     bsw_gpio_config_pin(CONFIG_MOTOR_STBY_PIN, BSW_GPIO_MODE_OUTPUT, BSW_GPIO_PULLUP_DISABLE, BSW_GPIO_PULLDOWN_DISABLE);
-    bsw_gpio_set_level(CONFIG_MOTOR_STBY_PIN, 1); // Driver Enable
+    bsw_gpio_set_level(CONFIG_MOTOR_STBY_PIN, 1); // TB6612FNG 드라이버 활성화
+    BSW_LOGI(MOTOR_TAG, "TB6612FNG STBY pin enabled (GPIO%d)", CONFIG_MOTOR_STBY_PIN);
+    #else
+    BSW_LOGW(MOTOR_TAG, "TB6612FNG STBY pin not configured - driver may not work!");
     #endif
 
-    // PWM 채널 초기화 (속도 제어용)
-    ret = pwm_channel_init(enable_pin, enable_ch);
+    // PWM 채널 초기화 (TT 모터 최적 주파수: 20kHz)
+    #ifdef CONFIG_MOTOR_PWM_FREQUENCY
+    ret = pwm_channel_init_freq(enable_pin, enable_ch, CONFIG_MOTOR_PWM_FREQUENCY);
+    #else
+    ret = pwm_channel_init_freq(enable_pin, enable_ch, 20000); // 기본 20kHz
+    #endif
     if (ret != ESP_OK) {
+        BSW_LOGE(MOTOR_TAG, "Failed to initialize PWM channel");
         return ret;
     }
 
-    BSW_LOGI(MOTOR_TAG, "Motor control initialized");
+    BSW_LOGI(MOTOR_TAG, "TB6612FNG motor control initialized (PWM: %dHz)",
+             CONFIG_MOTOR_PWM_FREQUENCY);
     return ESP_OK;
 }
 
 /**
- * @brief 모터 속도 설정 구현
- * 
- * 모터의 회전 방향과 속도를 제어합니다.
- * H-브리지의 A, B 핀으로 방향을 제어하고 PWM으로 속도를 제어합니다.
- * 
+ * @brief TB6612FNG 모터 속도 설정 구현
+ *
+ * TB6612FNG 모터 드라이버를 통해 TT 모터의 회전 방향과 속도를 제어합니다.
+ * IN1/IN2 핀으로 방향을 제어하고 PWM으로 속도를 제어합니다.
+ *
  * @param motor 모터 제어 구조체 포인터
  * @param speed 모터 속도 (-255 ~ +255)
  */
@@ -95,42 +115,46 @@ void motor_control_set_speed(motor_control_t* motor, int speed) {
     if (speed > 255) speed = 255;
     if (speed < -255) speed = -255;
 
-    // Update current speed state
+    // 현재 속도 상태 업데이트
     motor->current_speed = speed;
 
+    // TT 모터 데드존 보상 (비례 스케일링 방식)
+    // 입력 1~255 -> 출력 deadzone~255 (선형 변환)
+    // 이 방식은 저속에서 모터를 시작시키면서 고속에서 최대 출력을 보장합니다.
     const int deadzone = CONFIG_MOTOR_DEADZONE;
+    int compensated_speed = speed;
 
-    if (deadzone > 0) {
-        if (speed > 0) {
-            speed += deadzone;
-            if (speed > 255) speed = 255;
-        } else if (speed < 0) {
-            speed -= deadzone;
-            if (speed < -255) speed = -255;
-        }
+    if (deadzone > 0 && speed != 0) {
+        int abs_speed = (speed > 0) ? speed : -speed;
+        // 비례 스케일링: 1~255 입력을 deadzone~255 출력으로 변환
+        // 공식: output = deadzone + (input * (255 - deadzone) / 255)
+        int mapped_speed = deadzone + ((abs_speed * (255 - deadzone)) / 255);
+        compensated_speed = (speed > 0) ? mapped_speed : -mapped_speed;
     }
 
-    // 입력(255) -> PWM(1000) 스케일링
-    int abs_speed = (speed > 0) ? speed : -speed;
+    // PWM 듀티 변환 (0-255 -> 0-1000)
+    int abs_speed = (compensated_speed > 0) ? compensated_speed : -compensated_speed;
     uint32_t pwm_duty = (abs_speed * 1000) / 255;
 
+    // 방향 확인 로그 (최초 1회만)
     if (!s_direction_hint_logged && abs_speed >= 100) {
         BSW_LOGI(MOTOR_TAG,
-                 "Direction check: speed=%d -> pinA=%d HIGH / pinB=%d LOW for forward motion. Hold the robot and confirm wheel direction.",
+                 "TB6612FNG: speed=%d -> IN1(GPIO%d)=HIGH, IN2(GPIO%d)=LOW for forward. Verify motor direction.",
                  speed, motor->motor_pin_a, motor->motor_pin_b);
         s_direction_hint_logged = true;
     }
 
-    if (speed > 0) {
-        // 전진: A=HIGH, B=LOW
+    // TB6612FNG 제어 로직
+    if (compensated_speed > 0) {
+        // 전진: IN1=HIGH, IN2=LOW, PWM=듀티
         bsw_gpio_set_level(motor->motor_pin_a, 1);
         bsw_gpio_set_level(motor->motor_pin_b, 0);
-    } else if (speed < 0) {
-        // 후진: A=LOW, B=HIGH
+    } else if (compensated_speed < 0) {
+        // 후진: IN1=LOW, IN2=HIGH, PWM=듀티
         bsw_gpio_set_level(motor->motor_pin_a, 0);
         bsw_gpio_set_level(motor->motor_pin_b, 1);
     } else {
-        // 정지: A=LOW, B=LOW (브레이크)
+        // 정지 (Coast): IN1=LOW, IN2=LOW (자유 회전)
         bsw_gpio_set_level(motor->motor_pin_a, 0);
         bsw_gpio_set_level(motor->motor_pin_b, 0);
         pwm_duty = 0;
@@ -141,11 +165,11 @@ void motor_control_set_speed(motor_control_t* motor, int speed) {
 }
 
 /**
- * @brief 모터 정지 구현
- * 
- * 모터를 즉시 정지시킵니다.
- * motor_control_set_speed(0)을 호출하여 구현합니다.
- * 
+ * @brief 모터 정지 구현 (Coast 모드)
+ *
+ * 모터를 자유 회전 상태로 정지시킵니다.
+ * TB6612FNG: IN1=LOW, IN2=LOW (Coast - 자유 회전)
+ *
  * @param motor 모터 제어 구조체 포인터
  */
 void motor_control_stop(motor_control_t* motor) {
@@ -153,17 +177,46 @@ void motor_control_stop(motor_control_t* motor) {
 }
 
 /**
- * @brief 전압 보상 모터 속도 설정 구현
- * 
- * 현재 배터리 전압을 기반으로 PWM 듀티를 보정하여 모터 속도를 설정합니다.
- * 기준 전압(12V) 대비 현재 전압 비율로 속도 명령을 스케일링합니다.
- * 
+ * @brief 모터 브레이크 구현 (Short Brake 모드)
+ *
+ * 모터를 쇼트 브레이크로 급정지시킵니다.
+ * TB6612FNG: IN1=HIGH, IN2=HIGH (Short Brake - 급제동)
+ * Coast 모드보다 빠르게 정지하지만 모터에 부하가 큽니다.
+ *
+ * @param motor 모터 제어 구조체 포인터
+ */
+void motor_control_brake(motor_control_t* motor) {
+    // Short Brake: IN1=HIGH, IN2=HIGH
+    bsw_gpio_set_level(motor->motor_pin_a, 1);
+    bsw_gpio_set_level(motor->motor_pin_b, 1);
+
+    // PWM을 최대로 설정하여 브레이크 효과 강화
+    pwm_set_duty(motor->enable_channel, 1000);
+
+    // 현재 속도 상태 초기화
+    motor->current_speed = 0;
+}
+
+/**
+ * @brief 전압 보상 모터 속도 설정 구현 (최대 토크 보장)
+ *
+ * 배터리 전압 변동에도 일정한 토크를 유지하도록 PWM 듀티를 자동 보정합니다.
+ * 기준 전압(8.4V) 대비 현재 전압 비율로 속도 명령을 스케일링합니다.
+ *
+ * 동작 원리 (2S 리튬 배터리 기준):
+ * - 배터리 전압 8.4V (만충): 보정 없음 (1.0배)
+ * - 배터리 전압 7.4V (공칭): PWM 듀티 1.14배 증가
+ * - 배터리 전압 6.0V (저전압): PWM 듀티 1.40배 증가
+ * - 최대 보상: 1.5배로 제한 (모터 보호)
+ *
+ * 이를 통해 배터리 방전 시에도 일정한 토크를 유지하면서 모터를 보호합니다.
+ *
  * @param motor 모터 제어 구조체 포인터
  * @param speed 목표 속도 (-255 ~ +255)
  * @param current_voltage 현재 배터리 전압 (V)
  */
 void motor_control_set_speed_compensated(motor_control_t* motor, int speed, float current_voltage) {
-    const float NOMINAL_VOLTAGE = 12.0f; // 기준 전압 (12V)
+    const float NOMINAL_VOLTAGE = 8.4f; // 2S 리튬 배터리 만충 전압 (8.4V)
     int target_speed = speed;
 
     if (current_voltage > 0.0f && current_voltage <= CONFIG_BATTERY_CRITICAL_THRESHOLD) {

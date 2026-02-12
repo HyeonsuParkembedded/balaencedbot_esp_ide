@@ -68,14 +68,25 @@ esp_err_t motor_control_init(motor_control_t* motor,
 void motor_control_set_speed(motor_control_t* motor, int speed);
 
 /**
- * @brief 모터 정지
- * 
- * 모터를 즉시 정지시킵니다.
- * 모든 제어 핀을 LOW로 설정하여 브레이크 효과를 제공합니다.
- * 
+ * @brief 모터 정지 (Coast 모드)
+ *
+ * 모터를 자유 회전 상태로 정지시킵니다.
+ * TB6612FNG: IN1=LOW, IN2=LOW (Coast - 자유 회전)
+ *
  * @param motor 모터 제어 구조체 포인터
  */
 void motor_control_stop(motor_control_t* motor);
+
+/**
+ * @brief 모터 브레이크 (Short Brake 모드)
+ *
+ * 모터를 쇼트 브레이크로 급정지시킵니다.
+ * TB6612FNG: IN1=HIGH, IN2=HIGH (Short Brake - 급제동)
+ * Coast 모드보다 빠르게 정지하지만 모터에 부하가 큽니다.
+ *
+ * @param motor 모터 제어 구조체 포인터
+ */
+void motor_control_brake(motor_control_t* motor);
 
 /**
  * @brief 전압 보상 모터 속도 설정

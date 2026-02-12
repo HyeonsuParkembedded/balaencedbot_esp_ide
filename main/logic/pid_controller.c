@@ -75,31 +75,26 @@ void pid_controller_set_output_limits(pid_controller_t* pid, float min, float ma
 
 /**
  * @brief PID 제어 계산 구현
- * 
+ *
  * 표준 PID 알고리즘을 구현합니다:
  * Output = Kp*error + Ki*integral + Kd*derivative
- * 
+ *
  * 특수 기능:
  * - 첫 실행 시 미분 킥 방지
  * - 적분 와인드업 방지
  * - 출력 포화 제한
  */
-#include <stdio.h> // Added for debug
-
-// ... existing code ...
-
 float pid_controller_compute(pid_controller_t* pid, float input, float dt) {
     if (pid->first_run) {
-    pid->previous_error = input - pid->setpoint;
+        pid->previous_error = input - pid->setpoint;
         pid->first_run = false;
-        printf("[PID_DEBUG] First Run! Setpoint=%.2f, Input=%.2f, Output=0\n", pid->setpoint, input);
         return 0.0f; // 첫 실행 시 미분 킥 방지
     }
 
     if (dt <= 0.0f) return pid->output; // 잘못된 시간 간격 처리
-    
+
     float error = input - pid->setpoint;
-    
+
     // 적분 계산 및 와인드업 방지
     pid->integral += error * dt;
     if (pid->integral > pid->output_max) pid->integral = pid->output_max;
@@ -107,24 +102,14 @@ float pid_controller_compute(pid_controller_t* pid, float input, float dt) {
 
     // 미분 계산
     float derivative = (error - pid->previous_error) / dt;
-    
+
     // PID 출력 계산
-    float p_term = pid->kp * error;
-    float i_term = pid->ki * pid->integral;
-    float d_term = pid->kd * derivative;
-    
-    pid->output = p_term + i_term + d_term;
-    
-    // Debug high output
-    if (pid->output > 200.0f || pid->output < -200.0f) {
-        printf("[PID_DEBUG] High Output! P=%.2f, I=%.2f, D=%.2f, Err=%.2f, PrevErr=%.2f, dt=%.4f\n", 
-               p_term, i_term, d_term, error, pid->previous_error, dt);
-    }
+    pid->output = (pid->kp * error) + (pid->ki * pid->integral) + (pid->kd * derivative);
 
     // 출력 제한
     if (pid->output > pid->output_max) pid->output = pid->output_max;
     else if (pid->output < pid->output_min) pid->output = pid->output_min;
-    
+
     pid->previous_error = error;
 
     return pid->output;
